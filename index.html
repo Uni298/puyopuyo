@@ -23,16 +23,17 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             touch-action: none;
         }
         #game-container {
-            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-            border-radius: 10px;
+            box-shadow: 0 20px 60px rgba(26, 26, 46, 0.15);
+            border-radius: 16px;
             overflow: hidden;
             max-width: 100%;
             max-height: 100%;
+            border: 1px solid rgba(26, 26, 46, 0.1);
         }
         canvas {
             display: block;
@@ -45,72 +46,117 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            background: rgba(0, 0, 0, 0.9);
-            padding: 40px;
-            border-radius: 20px;
+            background: white;
+            padding: 50px;
+            border-radius: 24px;
             text-align: center;
-            color: white;
+            color: #1A1A2E;
             z-index: 1000;
-            min-width: 400px;
+            min-width: 420px;
+            box-shadow: 0 24px 80px rgba(26, 26, 46, 0.12);
+            border: 1px solid rgba(26, 26, 46, 0.08);
         }
         
         #lobby h1 {
-            margin-bottom: 30px;
-            color: #ffcc00;
+            margin-bottom: 40px;
+            color: #1A1A2E;
+            font-size: 32px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
         }
         
         .btn {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: #1A1A2E;
             border: none;
-            padding: 15px 30px;
+            padding: 16px 32px;
             margin: 10px;
-            border-radius: 10px;
+            border-radius: 12px;
             color: white;
-            font-size: 18px;
+            font-size: 16px;
+            font-weight: 600;
             cursor: pointer;
-            transition: transform 0.2s;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 12px rgba(26, 26, 46, 0.2);
         }
         
         .btn:hover {
-            transform: scale(1.05);
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(26, 26, 46, 0.25);
+            background: #252540;
         }
         
         .btn:active {
-            transform: scale(0.95);
+            transform: translateY(0);
+            box-shadow: 0 2px 8px rgba(26, 26, 46, 0.2);
         }
         
         .btn:disabled {
             opacity: 0.5;
             cursor: not-allowed;
+            transform: none;
+            box-shadow: 0 4px 12px rgba(26, 26, 46, 0.1);
         }
         
         #roomCodeInput {
-            padding: 15px;
+            padding: 16px 20px;
             font-size: 18px;
-            border-radius: 10px;
-            border: 2px solid #667eea;
+            border-radius: 12px;
+            border: 2px solid #e0e0e0;
             text-align: center;
             margin: 10px;
-            width: 200px;
+            width: 220px;
             text-transform: uppercase;
+            font-weight: 600;
+            letter-spacing: 3px;
+            transition: all 0.3s ease;
+            background: #fafafa;
+            color: #1A1A2E;
+        }
+        
+        #roomCodeInput:focus {
+            outline: none;
+            border-color: #1A1A2E;
+            background: white;
+            box-shadow: 0 0 0 4px rgba(26, 26, 46, 0.1);
         }
         
         #roomCode {
-            font-size: 32px;
-            font-weight: bold;
-            color: #ffcc00;
-            margin: 20px 0;
-            letter-spacing: 5px;
+            font-size: 48px;
+            font-weight: 700;
+            color: #1A1A2E;
+            margin: 30px 0;
+            letter-spacing: 8px;
+            font-family: 'Courier New', monospace;
         }
         
         #status {
-            margin-top: 20px;
-            font-size: 16px;
-            color: #aaa;
+            margin-top: 24px;
+            font-size: 15px;
+            color: #6c6c6c;
+            font-weight: 500;
         }
         
         .hidden {
             display: none !important;
+        }
+        
+        /* 追加のモダンな要素 */
+        .divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(26, 26, 46, 0.1), transparent);
+            margin: 30px 0;
+        }
+        
+        .btn-secondary {
+            background: white;
+            color: #1A1A2E;
+            border: 2px solid #1A1A2E;
+            box-shadow: none;
+        }
+        
+        .btn-secondary:hover {
+            background: #fafafa;
+            box-shadow: 0 4px 12px rgba(26, 26, 46, 0.1);
         }
     </style>
 </head>
@@ -150,7 +196,8 @@
             'blue': 0x3366ff,
             'green': 0x33cc33,
             'yellow': 0xffcc00,
-            'purple': 0xcc33ff
+            'purple': 0xcc33ff,
+            'garbage': 0xcccccc  // 薄い灰色
         };
         
         // WebSocket接続
@@ -318,6 +365,7 @@
                 this.chainCount = 0;
                 this.pendingGarbage = [];
                 this.gameStarted = false;
+                this.mobileControlMode = 'swipe'; // 'swipe' or 'tap'
             }
 
             preload() {
@@ -401,6 +449,23 @@
                         fontStyle: 'bold'
                     }
                 ).setOrigin(0.5);
+                
+                // 操作モード切り替えボタン（モバイル用）
+                this.controlModeBtn = this.add.text(
+                    this.cameras.main.width - 100,
+                    50,
+                    '操作: スワイプ',
+                    {
+                        fontSize: '14px',
+                        fill: '#fff',
+                        backgroundColor: 'rgba(0,0,0,0.5)',
+                        padding: { x: 8, y: 4 }
+                    }
+                ).setOrigin(1, 0).setInteractive();
+                
+                this.controlModeBtn.on('pointerdown', () => {
+                    this.toggleMobileControlMode();
+                });
             }
             
             startNewGame() {
@@ -442,7 +507,7 @@
                 }
                 
                 this.dropTimer = this.time.addEvent({
-                    delay: 300,
+                    delay: 800,
                     callback: this.autoDrop,
                     callbackScope: this,
                     loop: true
@@ -544,17 +609,161 @@
                 }
             }
             
+            findAdjacentGarbage(clearedPositions) {
+                const adjacentGarbage = [];
+                const checked = new Set();
+                
+                for (const pos of clearedPositions) {
+                    // 4方向をチェック
+                    const directions = [
+                        { row: -1, col: 0 }, // 上
+                        { row: 1, col: 0 },  // 下
+                        { row: 0, col: -1 }, // 左
+                        { row: 0, col: 1 }   // 右
+                    ];
+                    
+                    for (const dir of directions) {
+                        const newRow = pos.row + dir.row;
+                        const newCol = pos.col + dir.col;
+                        const key = `${newRow},${newCol}`;
+                        
+                        // 範囲内かつ未チェックの場合
+                        if (newRow >= 0 && newRow < ROWS && newCol >= 0 && newCol < COLS && !checked.has(key)) {
+                            checked.add(key);
+                            
+                            if (this.grid[newRow] && this.grid[newRow][newCol]) {
+                                const cell = this.grid[newRow][newCol];
+                                if (cell && cell.getData('isGarbage')) {
+                                    adjacentGarbage.push({ row: newRow, col: newCol });
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                return adjacentGarbage;
+            }
+
+            getVibrationPattern(chainCount) {
+                // 連鎖数に応じて振動パターンを返す
+                switch(chainCount) {
+                    case 2: // 2連鎖
+                        return [50]; // 短い振動
+                    case 3: // 3連鎖
+                        return [80, 30, 80]; // 2回の短い振動
+                    case 4: // 4連鎖
+                        return [100, 50, 100, 50, 100]; // 3回の振動
+                    case 5: // 5連鎖
+                        return [150, 50, 150, 50, 150, 50, 150]; // 4回の強い振動
+                    default: // 6連鎖以上
+                        // 連鎖数が多いほど長く強い振動
+                        const baseVibration = 200;
+                        const pattern = [];
+                        for (let i = 0; i < Math.min(chainCount - 1, 6); i++) {
+                            pattern.push(baseVibration, 50);
+                        }
+                        return pattern;
+                }
+            }
+
             setupTouchControls() {
+    this.touchStartX = 0;
+    this.touchStartY = 0;
+    this.swipeThreshold = 30; // 反応する最低距離
+
+    this.input.on('pointerdown', (pointer) => {
+        if (this.gameOver) return;
+        this.touchStartX = pointer.x;
+        this.touchStartY = pointer.y;
+    });
+
+    this.input.on('pointerup', (pointer) => {
+        if (this.gameOver || !this.currentPair || this.isMoving) return;
+
+        const deltaX = pointer.x - this.touchStartX;
+        const deltaY = pointer.y - this.touchStartY;
+        const absX = Math.abs(deltaX);
+        const absY = Math.abs(deltaY);
+
+        // 1. 移動距離が短い場合はタップ（回転）とみなす
+        if (absX < this.swipeThreshold && absY < this.swipeThreshold) {
+            this.rotatePair(1); // 右回転
+            return;
+        }
+
+        // 2. 横方向のスワイプ判定（縦より横の移動が大きい場合）
+        if (absX > absY) {
+            if (deltaX > this.swipeThreshold) {
+                this.movePair(1); // 右移動
+            } else if (deltaX < -this.swipeThreshold) {
+                this.movePair(-1); // 左移動
+            }
+        } 
+        // 3. 縦方向のスワイプ判定
+        else {
+            if (deltaY > this.swipeThreshold) {
+                this.hardDrop(); // 下スワイプで即落下
+            } else if (deltaY < -this.swipeThreshold) {
+                this.rotatePair(-1); // 上スワイプで左回転
+            }
+        }
+    });
+}
+
+            toggleMobileControlMode() {
+                // 操作モードを切り替え
+                if (this.mobileControlMode === 'swipe') {
+                    this.mobileControlMode = 'tap';
+                    this.controlModeBtn.setText('操作: タップ');
+                } else {
+                    this.mobileControlMode = 'swipe';
+                    this.controlModeBtn.setText('操作: スワイプ');
+                }
+                
+                // タップモードの場合はタッチイベントを再設定
+                if (this.mobileControlMode === 'tap') {
+                    this.setupTapControls();
+                } else {
+                    this.setupTouchControls();
+                }
+            }
+
+            setupTapControls() {
+                // 既存のイベントリスナーをクリア
+                this.input.removeAllListeners('pointerdown');
+                this.input.removeAllListeners('pointerup');
+                this.input.removeAllListeners('pointermove');
+                
                 this.touchStartX = 0;
                 this.touchStartY = 0;
-                this.touchStartTime = 0;
                 this.swipeThreshold = 30;
+                this.isDragging = false;
                 
                 this.input.on('pointerdown', (pointer) => {
                     if (this.gameOver) return;
                     this.touchStartX = pointer.x;
                     this.touchStartY = pointer.y;
-                    this.touchStartTime = this.time.now;
+                    this.isDragging = false;
+                    
+                    // タップ開始時に即座に位置を更新
+                    this.updatePuyoToPointer(pointer);
+                });
+                
+                // 指を動かしている間のリアルタイム追従
+                this.input.on('pointermove', (pointer) => {
+                    if (this.gameOver || !this.currentPair || this.isMoving) return;
+                    
+                    // 最初の移動でドラッグ状態に
+                    if (!this.isDragging) {
+                        const deltaX = Math.abs(pointer.x - this.touchStartX);
+                        const deltaY = Math.abs(pointer.y - this.touchStartY);
+                        if (deltaX > 5 || deltaY > 5) {
+                            this.isDragging = true;
+                        }
+                    }
+                    
+                    // 指の位置にぷよを追従させる
+                    this.updatePuyoToPointer(pointer);
                 });
                 
                 this.input.on('pointerup', (pointer) => {
@@ -562,26 +771,52 @@
                     
                     const deltaX = pointer.x - this.touchStartX;
                     const deltaY = pointer.y - this.touchStartY;
-                    const deltaTime = this.time.now - this.touchStartTime;
-                    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                    const absX = Math.abs(deltaX);
+                    const absY = Math.abs(deltaY);
                     
-                    if (distance < this.swipeThreshold && deltaTime < 300) {
-                        this.rotatePair();
-                    } else if (distance > this.swipeThreshold) {
-                        const angle = Math.atan2(deltaY, deltaX);
-                        const absAngle = Math.abs(angle);
-                        
-                        if (angle > Math.PI / 4 && angle < 3 * Math.PI / 4) {
-                            this.hardDrop();
-                        } else if (angle < -Math.PI / 4 && angle > -3 * Math.PI / 4) {
-                            this.rotatePair();
-                        } else if (absAngle < Math.PI / 4) {
-                            this.movePair(1);
-                        } else if (absAngle > 3 * Math.PI / 4) {
-                            this.movePair(-1);
+                    // スワイプ判定
+                    if (absX > this.swipeThreshold || absY > this.swipeThreshold) {
+                        // 2. 縦方向のスワイプ判定
+                        if (absY > absX) {
+                            if (deltaY > this.swipeThreshold) {
+                                this.hardDrop(); // 下スワイプで即落下
+                            } else if (deltaY < -this.swipeThreshold) {
+                                this.rotatePair(1); // 上スワイプで右回転
+                            }
+                        }
+                        // 3. 横方向のスワイプ判定（タップモードでは無視）
+                        else {
+                            // タップモードでは横スワイプは無視
                         }
                     }
+                    
+                    this.isDragging = false;
                 });
+            }
+            
+            updatePuyoToPointer(pointer) {
+                // 指の位置から列を計算
+                const targetCol = Math.floor((pointer.x - this.fieldOffsetX) / CELL_SIZE);
+                
+                // 有効な範囲内かチェック
+                if (targetCol >= 0 && targetCol < COLS && targetCol !== this.currentPair.col) {
+                    // 直接位置を設定（安全な方法）
+                    const oldCol = this.currentPair.col;
+                    this.currentPair.col = targetCol;
+                    
+                    // 位置が有効かチェック
+                    const positions = this.getPairPositions(this.currentPair.col, this.currentPair.row, this.currentPair.rotation);
+                    if (this.isValidPosition(positions)) {
+                        // 有効なら位置を更新
+                        this.updatePairPosition();
+                        this.updateGhostPieces();
+                        this.lastMoveOrRotateTime = this.time.now;
+                        this.resetLockDelay();
+                    } else {
+                        // 無効なら元の位置に戻す
+                        this.currentPair.col = oldCol;
+                    }
+                }
             }
 
             createPuyo(x, y, color, isGhost = false, customAlpha = 1) {
@@ -744,12 +979,12 @@
                     this.lastMoveTime = time;
                 }
 
-                if (Phaser.Input.Keyboard.JustDown(this.spaceKey) && time > this.lastRotateTime + 200) {
+                if (Phaser.Input.Keyboard.JustDown(this.cursors.up) && time > this.lastRotateTime + 150) {
                     this.rotatePair();
                     this.lastRotateTime = time;
                 }
 
-                if (Phaser.Input.Keyboard.JustDown(this.cursors.down)) {
+                if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
                     this.hardDrop();
                 }
             }
@@ -841,6 +1076,20 @@
                             this.lockPair();
                         }
                     });
+                    
+                    // 画面バウンス効果（より自然に）
+                    this.cameras.main.setY(0);
+                    this.tweens.add({
+                        targets: this.cameras.main,
+                        y: { from: 0, to: 15, to: -3, to: 0 },
+                        duration: 300,
+                        ease: 'Elastic.easeOut'
+                    });
+                    
+                    // デバイス振動
+                    if ('vibrate' in navigator) {
+                        navigator.vibrate([30]);
+                    }
                 }
             }
 
@@ -951,7 +1200,16 @@
                 
                 this.currentPair = null;
                 
+                // 即座に新しいぷよをスポーンさせて操作可能にする
+                this.spawnNewPair();
+                this.isMoving = false;
+                
+                // 連鎖処理はバックグラウンドで実行
                 this.chainCount = 0;
+                this.processChainReaction();
+            }
+            
+            async processChainReaction() {
                 await this.checkAndClearMatches();
                 await this.applyGravity();
                 
@@ -963,9 +1221,6 @@
                 }
                 
                 this.sendFieldUpdate();
-                
-                this.isMoving = false;
-                this.spawnNewPair();
             }
 
             async checkAndClearMatches() {
@@ -998,13 +1253,13 @@
                             y: m.row * CELL_SIZE + CELL_SIZE / 2
                         }));
                         
-                        await this.clearPuyos(matched);
+                        const normalPuyoCount = await this.clearPuyos(matched);
                         
-                        this.score += matched.length * 10 * this.chainCount;
+                        this.score += normalPuyoCount * 10 * this.chainCount;
                         this.scoreText.setText(`スコア: ${this.score}`);
                         
-                        // おじゃまぷよを送る（消した数の1/2を切り捨て）
-                        const garbageAmount = Math.floor(matched.length / 2);
+                        // おじゃまぷよを送る（通常ぷよの消した数の1/2を切り捨て×連鎖数）
+                        const garbageAmount = Math.floor(normalPuyoCount / 2) * this.chainCount;
                         if (garbageAmount > 0) {
                             this.sendGarbage(garbageAmount, positions);
                         }
@@ -1063,6 +1318,7 @@
 
             async clearPuyos(matches) {
                 return new Promise(resolve => {
+                    let normalPuyoCount = 0; // 通常ぷよの数をカウント
                     const uniqueMatches = [];
                     const seen = new Set();
                     
@@ -1081,12 +1337,16 @@
                             const sprite = this.grid[m.row][m.col];
                             if (sprite && sprite.active && sprite.scene) {
                                 sprites.push(sprite);
+                                // おじゃまぷよでなければカウント
+                                if (!sprite.getData('isGarbage')) {
+                                    normalPuyoCount++;
+                                }
                             }
                         }
                     }
                     
                     if (sprites.length === 0) {
-                        resolve();
+                        resolve(normalPuyoCount);
                         return;
                     }
                     
@@ -1096,9 +1356,29 @@
                         }
                     }
                     
+                    // 隣接するおじゃまぷよを消す
+                    const adjacentGarbage = this.findAdjacentGarbage(uniqueMatches);
+                    for (const pos of adjacentGarbage) {
+                        if (this.grid[pos.row] && this.grid[pos.row][pos.col]) {
+                            const garbage = this.grid[pos.row][pos.col];
+                            if (garbage && garbage.getData('isGarbage')) {
+                                sprites.push(garbage); // 消すスプライトリストに追加
+                                this.grid[pos.row][pos.col] = null;
+                            }
+                        }
+                    }
+                    
                     if (this.chainCount > 1) {
                         try {
-                            this.cameras.main.shake(100, 0.002 * this.chainCount);
+                            // カメラ振動（強化）
+                            this.cameras.main.shake(150, 0.003 * this.chainCount);
+                            
+                            // デバイス振動（モバイル対応）
+                            if ('vibrate' in navigator) {
+                                // 連鎖数に応じて振動パターンを変更
+                                const vibrationPattern = this.getVibrationPattern(this.chainCount);
+                                navigator.vibrate(vibrationPattern);
+                            }
                         } catch (e) {}
                     }
                     
@@ -1166,7 +1446,7 @@
                                         }
                                     } catch (e) {}
                                 });
-                                resolve();
+                                resolve(normalPuyoCount);
                             }
                         });
                     } catch (e) {
@@ -1178,7 +1458,7 @@
                                 }
                             } catch (e) {}
                         });
-                        resolve();
+                        resolve(normalPuyoCount);
                     }
                 });
             }
@@ -1305,7 +1585,8 @@
                     }
                     
                     // おじゃまぷよを作成（画面外から）
-                    const puyo = this.createPuyo(x, startY, color);
+                    const puyo = this.createPuyo(x, startY, 'garbage');
+                    puyo.setData('isGarbage', true); // おじゃまぷよとしてマーク
                     this.grid[targetRow][col] = puyo;
                     
                     // 落下アニメーション

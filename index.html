@@ -603,7 +603,7 @@
                     // 地面に着いた
                     if (!this.isOnGround) {
                         this.isOnGround = true;
-                        // 0.2秒（200ms）後にロック
+                        // 0.5秒（500ms）後にロック
                         this.lockDelayTimer = this.time.delayedCall(500, () => {
                             this.lockPair();
                         });
@@ -752,6 +752,8 @@
                             if (sprite && sprite.active && sprite.scene) {
                                 validMatches.push(m);
                                 sprites.push(sprite);
+                                // 先にグリッドからnullにする
+                                this.grid[m.row][m.col] = null;
                             }
                         }
                     }
@@ -767,14 +769,9 @@
                             this.cameras.main.shake(150, 0.003 * this.chainCount);
                             this.cameras.main.flash(200, 255, 255, 255, false, 0.1 * Math.min(this.chainCount, 3));
                         } catch (e) {
-                            console.log('Camera effect error:', e);
+                            // エラーを無視
                         }
                     }
-                    
-                    // 先にグリッドからnullにする（重要！）
-                    validMatches.forEach(m => {
-                        this.grid[m.row][m.col] = null;
-                    });
                     
                     sprites.forEach((sprite, index) => {
                         if (!sprite || !sprite.active || !sprite.scene) return;
@@ -785,77 +782,108 @@
                         const x = sprite.x;
                         const y = sprite.y;
                         
+                        // 既存のTweenを停止
+                        this.tweens.killTweensOf(sprite);
+                        
                         // 爆発エフェクト（中心から外へ）
                         for (let i = 0; i < 12; i++) {
                             const angle = (i / 12) * Math.PI * 2;
                             const distance = Phaser.Math.Between(40, 80);
                             
-                            const particle = this.add.circle(x, y, Phaser.Math.Between(3, 8), COLOR_VALUES[color]);
-                            this.tweens.add({
-                                targets: particle,
-                                x: x + Math.cos(angle) * distance,
-                                y: y + Math.sin(angle) * distance,
-                                alpha: 0,
-                                scale: 0,
-                                duration: 500 + Phaser.Math.Between(0, 200),
-                                ease: 'Power2',
-                                onComplete: () => {
-                                    if (particle && particle.scene) particle.destroy();
-                                }
-                            });
+                            try {
+                                const particle = this.add.circle(x, y, Phaser.Math.Between(3, 8), COLOR_VALUES[color]);
+                                this.tweens.add({
+                                    targets: particle,
+                                    x: x + Math.cos(angle) * distance,
+                                    y: y + Math.sin(angle) * distance,
+                                    alpha: 0,
+                                    scale: 0,
+                                    duration: 500 + Phaser.Math.Between(0, 200),
+                                    ease: 'Power2',
+                                    onComplete: () => {
+                                        try {
+                                            if (particle && particle.scene) particle.destroy();
+                                        } catch (e) {}
+                                    }
+                                });
+                            } catch (e) {}
                         }
                         
                         // 星形パーティクル
                         for (let i = 0; i < 5; i++) {
-                            const star = this.add.star(
-                                x + Phaser.Math.Between(-10, 10),
-                                y + Phaser.Math.Between(-10, 10),
-                                5, 3, 8, 0xffff00
-                            );
-                            this.tweens.add({
-                                targets: star,
-                                angle: 360,
-                                y: star.y - 50,
-                                alpha: 0,
-                                duration: 600,
-                                delay: i * 50,
-                                onComplete: () => {
-                                    if (star && star.scene) star.destroy();
-                                }
-                            });
+                            try {
+                                const star = this.add.star(
+                                    x + Phaser.Math.Between(-10, 10),
+                                    y + Phaser.Math.Between(-10, 10),
+                                    5, 3, 8, 0xffff00
+                                );
+                                this.tweens.add({
+                                    targets: star,
+                                    angle: 360,
+                                    y: star.y - 50,
+                                    alpha: 0,
+                                    duration: 600,
+                                    delay: i * 50,
+                                    onComplete: () => {
+                                        try {
+                                            if (star && star.scene) star.destroy();
+                                        } catch (e) {}
+                                    }
+                                });
+                            } catch (e) {}
                         }
                         
                         // 光の輪エフェクト
-                        const ring = this.add.circle(x, y, 5, 0xffffff, 0.8);
-                        this.tweens.add({
-                            targets: ring,
-                            radius: 40,
-                            alpha: 0,
-                            duration: 400,
-                            delay: index * 30,
-                            onComplete: () => {
-                                if (ring && ring.scene) ring.destroy();
-                            }
-                        });
+                        try {
+                            const ring = this.add.circle(x, y, 5, 0xffffff, 0.8);
+                            this.tweens.add({
+                                targets: ring,
+                                radius: 40,
+                                alpha: 0,
+                                duration: 400,
+                                delay: index * 30,
+                                onComplete: () => {
+                                    try {
+                                        if (ring && ring.scene) ring.destroy();
+                                    } catch (e) {}
+                                }
+                            });
+                        } catch (e) {}
                     });
                     
                     // メインの消滅アニメーション
-                    this.tweens.add({
-                        targets: sprites,
-                        scale: { from: 1, to: 0 },
-                        alpha: { from: 1, to: 0 },
-                        angle: 720,
-                        duration: 400,
-                        ease: 'Back.easeIn',
-                        onComplete: () => {
-                            sprites.forEach(sprite => {
+                    try {
+                        this.tweens.add({
+                            targets: sprites,
+                            scale: { from: 1, to: 0 },
+                            alpha: { from: 1, to: 0 },
+                            angle: 720,
+                            duration: 400,
+                            ease: 'Back.easeIn',
+                            onComplete: () => {
+                                sprites.forEach(sprite => {
+                                    try {
+                                        if (sprite && sprite.scene) {
+                                            this.tweens.killTweensOf(sprite);
+                                            sprite.destroy();
+                                        }
+                                    } catch (e) {}
+                                });
+                                resolve();
+                            }
+                        });
+                    } catch (e) {
+                        // アニメーションが失敗した場合でもスプライトを破棄
+                        sprites.forEach(sprite => {
+                            try {
                                 if (sprite && sprite.scene) {
+                                    this.tweens.killTweensOf(sprite);
                                     sprite.destroy();
                                 }
-                            });
-                            resolve();
-                        }
-                    });
+                            } catch (e) {}
+                        });
+                        resolve();
+                    }
                 });
             }
 
@@ -961,7 +989,7 @@
                 createContainer: false
             },
             fps: {
-                target: 60,
+                target: 120,
                 forceSetTimeOut: false
             }
         };

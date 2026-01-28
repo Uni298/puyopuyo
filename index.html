@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>ぷよぷよ</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Arial', sans-serif;
+            touch-action: none;
+        }
+        #game-container {
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            border-radius: 10px;
+            overflow: hidden;
+            max-width: 100%;
+            max-height: 100%;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container"></div>
+    <script>
+        const COLS = 6;
+        const ROWS = 12;
+        const CELL_SIZE = 50;
+        const COLORS = ['red', 'blue', 'green', 'yellow', 'purple'];
+        const COLOR_VALUES = {
+            'red': 0xff3333,
+            'blue': 0x3366ff,
+            'green': 0x33cc33,
+            'yellow': 0xffcc00,
+            'purple': 0xcc33ff
+        };
+
+        class PuyoPuyo extends Phaser.Scene {
+            constructor() {
+                super({ key: 'PuyoPuyo' });
+                this.grid = [];
+                this.currentPair = null;
+                this.nextPair = null;
+                this.score = 0;
+                this.gameOver = false;
+                this.isMoving = false;
+                this.chainCount = 0;
+            }
+
+            preload() {
+                // グラデーション背景を作成
+                this.createGradientTexture();
+            }
+
+            createGradientTexture() {
+                const graphics = this.add.graphics();
+                for (let i = 0; i < ROWS; i++) {
+                    const alpha = 0.1 + (i / ROWS) * 0.2;
+                    graphics.fillStyle(0x000000, alpha);
+                    graphics.fillRect(0, i * CELL_SIZE, COLS * CELL_SIZE, CELL_SIZE);
+                }
+                graphics.generateTexture('gradient', COLS * CELL_SIZE, ROWS * CELL_SIZE);
+                graphics.destroy();
+            }
+
+            create() {
+                // 背景
+                this.add.rectangle(
+                    COLS * CELL_SIZE / 2, 
+                    ROWS * CELL_SIZE / 2, 
+                    COLS * CELL_SIZE, 
+                    ROWS * CELL_SIZE, 
+                    0x2c3e50
+                ).setOrigin(0.5);
+                
+                this.add.image(0, 0, 'gradient').setOrigin(0);
+
+                // グリッドの初期化
+                for (let row = 0; row < ROWS; row++) {
+                    this.grid[row] = [];
+                    for (let col = 0; col < COLS; col++) {
+                        this.grid[row][col] = null;
+                    }
+                }
+
+                // スコア表示
+                this.scoreText = this.add.text(COLS * CELL_SIZE + 20, 50, 'スコア: 0', {
+                    fontSize: '24px',
+                    fill: '#fff',
+                    fontStyle: 'bold'
+                });
+
+                // チェイン表示
+                this.chainText = this.add.text(COLS * CELL_SIZE + 20, 100, '', {
+                    fontSize: '32px',
+                    fill: '#ffcc00',
+                    fontStyle: 'bold'
+                });
+
+                // Next表示
+                this.add.text(COLS * CELL_SIZE + 20, 150, 'NEXT:', {
+                    fontSize: '20px',
+                    fill: '#fff'
+                });
+                this.nextContainer = this.add.container(COLS * CELL_SIZE + 50, 200);
+
+                // 操作説明
+                this.add.text(COLS * CELL_SIZE + 20, 300, 
+                    '← → : 移動\n↓ : ハードドロップ\nSPACE : 回転\n\nスワイプでも操作可能', {
+                    fontSize: '14px',
+                    fill: '#ccc',
+                    lineSpacing: 5
+                });
+
+                // キーボード設定
+                this.cursors = this.input.keyboard.createCursorKeys();
+                this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+                
+                // タッチ・スワイプ設定
+                this.touchStartX = 0;
+                this.touchStartY = 0;
+                this.touchStartTime = 0;
+                this.swipeThreshold = 30; // スワイプと判定する最小距離
+                
+                this.input.on('pointerdown', (pointer) => {
+                    if (this.gameOver) return;
+                    this.touchStartX = pointer.x;
+                    this.touchStartY = pointer.y;
+                    this.touchStartTime = this.time.now;
+                });
+                
+                this.input.on('pointerup', (pointer) => {
+                    if (this.gameOver || !this.currentPair || this.isMoving) return;
+                    
+                    const deltaX = pointer.x - this.touchStartX;
+                    const deltaY = pointer.y - this.touchStartY;
+                    const deltaTime = this.time.now - this.touchStartTime;
+                    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                    
+                    // タップ判定（回転）
+                    if (distance < this.swipeThreshold && deltaTime < 300) {
+                        this.rotatePair();
+                    }
+                    // スワイプ判定
+                    else if (distance > this.swipeThreshold) {
+                        const angle = Math.atan2(deltaY, deltaX);
+                        const absAngle = Math.abs(angle);
+                        
+                        // 下スワイプ = ハードドロップ
+                        if (angle > Math.PI / 4 && angle < 3 * Math.PI / 4) {
+                            this.hardDrop();
+                        }
+                        // 上スワイプ = 回転
+                        else if (angle < -Math.PI / 4 && angle > -3 * Math.PI / 4) {
+                            this.rotatePair();
+                        }
+                        // 右スワイプ
+                        else if (absAngle < Math.PI / 4) {
+                            this.movePair(1);
+                        }
+                        // 左スワイプ
+                        else if (absAngle > 3 * Math.PI / 4) {
+                            this.movePair(-1);
+                        }
+                    }
+                });
+                
+                // キーリピート防止
+                this.lastMoveTime = 0;
+                this.lastRotateTime = 0;
+
+                // ゲーム開始
+                this.nextPair = this.createPuyoPair();
+                this.spawnNewPair();
+                this.dropTimer = this.time.addEvent({
+                    delay: 250, // 150の半分
+                    callback: this.autoDrop,
+                    callbackScope: this,
+                    loop: true
+                });
+                
+                // ロック遅延用の変数
+                this.lockDelayTimer = null;
+                this.isOnGround = false;
+                this.lastMoveOrRotateTime = 0;
+            }
+
+            createPuyo(x, y, color, isGhost = false) {
+                const puyo = this.add.container(x, y);
+                const radius = CELL_SIZE * 0.38;
+                
+                // 影
+                const shadow = this.add.circle(2, 2, radius, 0x000000, 0.3);
+                puyo.add(shadow);
+                
+                // メインボディ
+                const baseColor = COLOR_VALUES[color];
+                const body = this.add.circle(0, 0, radius, baseColor);
+                puyo.add(body);
+                
+                // 下側の暗い部分（立体感）
+                const darkPart = this.add.circle(0, radius * 0.2, radius * 0.9, 
+                    Phaser.Display.Color.IntegerToColor(baseColor).darken(15).color);
+                puyo.add(darkPart);
+                
+                // ハイライト（大）
+                const highlight1 = this.add.circle(-radius * 0.3, -radius * 0.3, radius * 0.4, 0xffffff, 0.5);
+                puyo.add(highlight1);
+                
+                // ハイライト（小）
+                const highlight2 = this.add.circle(radius * 0.2, -radius * 0.35, radius * 0.2, 0xffffff, 0.3);
+                puyo.add(highlight2);
+                
+                // 輪郭線
+                const outline = this.add.circle(0, 0, radius);
+                outline.setStrokeStyle(2, 0xffffff, 0.8);
+                outline.setFillStyle(0, 0);
+                puyo.add(outline);
+                
+                puyo.setData('color', color);
+                puyo.setAlpha(isGhost ? 0.3 : 1);
+                puyo.setSize(CELL_SIZE, CELL_SIZE);
+                
+                // 登場アニメーション
+                if (!isGhost) {
+                    puyo.setScale(0);
+                    puyo.setAngle(-180);
+                    this.tweens.add({
+                        targets: puyo,
+                        scale: 1,
+                        angle: 0,
+                        duration: 300,
+                        ease: 'Elastic.easeOut'
+                    });
+                    
+                    // キラキラエフェクト
+                    for (let i = 0; i < 5; i++) {
+                        const sparkle = this.add.circle(
+                            x + Phaser.Math.Between(-20, 20),
+                            y + Phaser.Math.Between(-20, 20),
+                            Phaser.Math.Between(2, 4),
+                            0xffffff,
+                            0.8
+                        );
+                        this.tweens.add({
+                            targets: sparkle,
+                            alpha: 0,
+                            scale: 0,
+                            duration: 400,
+                            delay: i * 50,
+                            onComplete: () => sparkle.destroy()
+                        });
+                    }
+                    
+                    // ぷるぷるアニメーション（範囲を制限）
+                    this.tweens.add({
+                        targets: puyo,
+                        scaleX: { from: 1, to: 1.08 },
+                        scaleY: { from: 1, to: 0.92 },
+                        duration: 800,
+                        yoyo: true,
+                        repeat: -1,
+                        ease: 'Sine.easeInOut'
+                    });
+                }
+                
+                return puyo;
+            }
+
+            createPuyoPair() {
+                const color1 = Phaser.Utils.Array.GetRandom(COLORS);
+                const color2 = Phaser.Utils.Array.GetRandom(COLORS);
+                return {
+                    main: { color: color1, sprite: null },
+                    sub: { color: color2, sprite: null },
+                    col: Phaser.Math.Between(0, COLS - 1), // ランダムな列
+                    row: 0,
+                    rotation: 0 // 0: 上, 1: 右, 2: 下, 3: 左
+                };
+            }
+
+            spawnNewPair() {
+                if (this.gameOver) return;
+
+                this.currentPair = this.nextPair;
+                this.nextPair = this.createPuyoPair();
+
+                // Current pairのスプライト作成
+                const startX = this.currentPair.col * CELL_SIZE + CELL_SIZE / 2;
+                const startY = this.currentPair.row * CELL_SIZE + CELL_SIZE / 2;
+                
+                this.currentPair.main.sprite = this.createPuyo(startX, startY, this.currentPair.main.color);
+                this.currentPair.sub.sprite = this.createPuyo(startX, startY - CELL_SIZE, this.currentPair.sub.color);
+
+                // Next表示更新
+                this.updateNextDisplay();
+
+                // ゲームオーバーチェック
+                if (this.grid[0][this.currentPair.col] !== null || 
+                    this.grid[1][this.currentPair.col] !== null) {
+                    this.endGame();
+                }
+            }
+
+            updateNextDisplay() {
+                this.nextContainer.removeAll(true);
+                const next1 = this.createPuyo(0, 0, this.nextPair.main.color);
+                const next2 = this.createPuyo(0, -CELL_SIZE, this.nextPair.sub.color);
+                next1.setScale(0.8);
+                next2.setScale(0.8);
+                this.nextContainer.add([next1, next2]);
+            }
+
+            update(time) {
+                if (this.gameOver || !this.currentPair || this.isMoving) return;
+
+                // 左右移動
+                if (this.cursors.left.isDown && time > this.lastMoveTime + 150) {
+                    this.movePair(-1);
+                    this.lastMoveTime = time;
+                } else if (this.cursors.right.isDown && time > this.lastMoveTime + 150) {
+                    this.movePair(1);
+                    this.lastMoveTime = time;
+                }
+
+                // 回転
+                if (Phaser.Input.Keyboard.JustDown(this.spaceKey) && time > this.lastRotateTime + 200) {
+                    this.rotatePair();
+                    this.lastRotateTime = time;
+                }
+
+                // ハードドロップ（下キー）
+                if (Phaser.Input.Keyboard.JustDown(this.cursors.down)) {
+                    this.hardDrop();
+                }
+            }
+
+            movePair(dir) {
+                const newCol = this.currentPair.col + dir;
+                const positions = this.getPairPositions(newCol, this.currentPair.row, this.currentPair.rotation);
+                
+                if (this.isValidPosition(positions)) {
+                    this.currentPair.col = newCol;
+                    this.updatePairPosition();
+                    this.lastMoveOrRotateTime = this.time.now;
+                    this.resetLockDelay();
+                }
+            }
+
+            rotatePair() {
+                const newRotation = (this.currentPair.rotation + 1) % 4;
+                const positions = this.getPairPositions(this.currentPair.col, this.currentPair.row, newRotation);
+                
+                if (this.isValidPosition(positions)) {
+                    this.currentPair.rotation = newRotation;
+                    this.updatePairPosition();
+                    this.lastMoveOrRotateTime = this.time.now;
+                    this.resetLockDelay();
+                    
+                    // 回転アニメーション（角度のみ）
+                    this.tweens.add({
+                        targets: this.currentPair.main.sprite,
+                        angle: '+=360',
+                        duration: 200,
+                        ease: 'Back.easeOut'
+                    });
+                    
+                    this.tweens.add({
+                        targets: this.currentPair.sub.sprite,
+                        angle: '+=360',
+                        duration: 200,
+                        ease: 'Back.easeOut'
+                    });
+                    
+                    // 回転エフェクト
+                    const centerX = (this.currentPair.main.sprite.x + this.currentPair.sub.sprite.x) / 2;
+                    const centerY = (this.currentPair.main.sprite.y + this.currentPair.sub.sprite.y) / 2;
+                    
+                    for (let i = 0; i < 8; i++) {
+                        const angle = (i / 8) * Math.PI * 2;
+                        const ring = this.add.circle(
+                            centerX + Math.cos(angle) * 20,
+                            centerY + Math.sin(angle) * 20,
+                            3,
+                            0xffffff,
+                            0.8
+                        );
+                        this.tweens.add({
+                            targets: ring,
+                            x: centerX + Math.cos(angle) * 40,
+                            y: centerY + Math.sin(angle) * 40,
+                            alpha: 0,
+                            duration: 300,
+                            onComplete: () => ring.destroy()
+                        });
+                    }
+                }
+            }
+
+            resetLockDelay() {
+                // ロック遅延タイマーをリセット
+                if (this.lockDelayTimer) {
+                    this.lockDelayTimer.remove();
+                    this.lockDelayTimer = null;
+                }
+                this.isOnGround = false;
+            }
+
+            hardDrop() {
+                if (!this.currentPair || this.isMoving) return;
+                
+                // 最下点を探す
+                let dropRow = this.currentPair.row;
+                while (true) {
+                    const testRow = dropRow + 1;
+                    const positions = this.getPairPositions(this.currentPair.col, testRow, this.currentPair.rotation);
+                    if (!this.isValidPosition(positions)) break;
+                    dropRow = testRow;
+                }
+                
+                const distance = dropRow - this.currentPair.row;
+                if (distance > 0) {
+                    // 即座に移動
+                    this.currentPair.row = dropRow;
+                    
+                    // 高速落下アニメーション
+                    const positions = this.getPairPositions(
+                        this.currentPair.col, 
+                        dropRow, 
+                        this.currentPair.rotation
+                    );
+                    
+                    // 残像エフェクト
+                    const trail1 = this.add.circle(
+                        this.currentPair.main.sprite.x, 
+                        this.currentPair.main.sprite.y,
+                        CELL_SIZE * 0.38,
+                        COLOR_VALUES[this.currentPair.main.color], 
+                        0.5
+                    );
+                    const trail2 = this.add.circle(
+                        this.currentPair.sub.sprite.x, 
+                        this.currentPair.sub.sprite.y,
+                        CELL_SIZE * 0.38,
+                        COLOR_VALUES[this.currentPair.sub.color], 
+                        0.5
+                    );
+                    
+                    this.tweens.add({
+                        targets: [trail1, trail2],
+                        alpha: 0,
+                        duration: 200,
+                        onComplete: () => {
+                            trail1.destroy();
+                            trail2.destroy();
+                        }
+                    });
+                    
+                    this.tweens.add({
+                        targets: this.currentPair.main.sprite,
+                        x: positions.main.col * CELL_SIZE + CELL_SIZE / 2,
+                        y: positions.main.row * CELL_SIZE + CELL_SIZE / 2,
+                        duration: 100,
+                        ease: 'Power2'
+                    });
+                    
+                    this.tweens.add({
+                        targets: this.currentPair.sub.sprite,
+                        x: positions.sub.col * CELL_SIZE + CELL_SIZE / 2,
+                        y: positions.sub.row * CELL_SIZE + CELL_SIZE / 2,
+                        duration: 100,
+                        ease: 'Power2',
+                        onComplete: () => {
+                            // 着地エフェクト
+                            this.createLandingEffect(positions.main.col, positions.main.row);
+                            this.createLandingEffect(positions.sub.col, positions.sub.row);
+                            
+                            // 即座にロック
+                            this.lockPair();
+                        }
+                    });
+                    
+                    // 振動エフェクト
+                    try {
+                        this.cameras.main.shake(100, 0.005);
+                    } catch (e) {
+                        console.log('Camera shake error:', e);
+                    }
+                }
+            }
+
+            createLandingEffect(col, row) {
+                const x = col * CELL_SIZE + CELL_SIZE / 2;
+                const y = row * CELL_SIZE + CELL_SIZE / 2;
+                
+                // 衝撃波
+                for (let i = 0; i < 3; i++) {
+                    const wave = this.add.circle(x, y, 5, 0xffffff, 0.6);
+                    this.tweens.add({
+                        targets: wave,
+                        radius: 30 + i * 10,
+                        alpha: 0,
+                        duration: 400,
+                        delay: i * 50,
+                        onComplete: () => wave.destroy()
+                    });
+                }
+                
+                // パーティクル
+                for (let i = 0; i < 6; i++) {
+                    const angle = (i / 6) * Math.PI * 2;
+                    const particle = this.add.circle(x, y, 4, 0xffffff);
+                    this.tweens.add({
+                        targets: particle,
+                        x: x + Math.cos(angle) * 30,
+                        y: y + Math.sin(angle) * 15,
+                        alpha: 0,
+                        duration: 300,
+                        onComplete: () => particle.destroy()
+                    });
+                }
+            }
+
+            getPairPositions(col, row, rotation) {
+                const main = { col: col, row: row };
+                let sub;
+                
+                switch(rotation) {
+                    case 0: sub = { col: col, row: row - 1 }; break; // 上
+                    case 1: sub = { col: col + 1, row: row }; break; // 右
+                    case 2: sub = { col: col, row: row + 1 }; break; // 下
+                    case 3: sub = { col: col - 1, row: row }; break; // 左
+                }
+                
+                return { main, sub };
+            }
+
+            isValidPosition(positions) {
+                for (let pos of [positions.main, positions.sub]) {
+                    if (pos.col < 0 || pos.col >= COLS || pos.row >= ROWS) return false;
+                    if (pos.row >= 0 && this.grid[pos.row][pos.col] !== null) return false;
+                }
+                return true;
+            }
+
+            updatePairPosition() {
+                const positions = this.getPairPositions(
+                    this.currentPair.col, 
+                    this.currentPair.row, 
+                    this.currentPair.rotation
+                );
+                
+                this.tweens.add({
+                    targets: this.currentPair.main.sprite,
+                    x: positions.main.col * CELL_SIZE + CELL_SIZE / 2,
+                    y: positions.main.row * CELL_SIZE + CELL_SIZE / 2,
+                    duration: 100
+                });
+                
+                this.tweens.add({
+                    targets: this.currentPair.sub.sprite,
+                    x: positions.sub.col * CELL_SIZE + CELL_SIZE / 2,
+                    y: positions.sub.row * CELL_SIZE + CELL_SIZE / 2,
+                    duration: 100
+                });
+            }
+
+            autoDrop() {
+                if (!this.gameOver && this.currentPair && !this.isMoving) {
+                    this.dropPair();
+                }
+            }
+
+            dropPair() {
+                const newRow = this.currentPair.row + 1;
+                const positions = this.getPairPositions(this.currentPair.col, newRow, this.currentPair.rotation);
+                
+                if (this.isValidPosition(positions)) {
+                    this.currentPair.row = newRow;
+                    this.updatePairPosition();
+                    this.resetLockDelay();
+                } else {
+                    // 地面に着いた
+                    if (!this.isOnGround) {
+                        this.isOnGround = true;
+                        // 0.2秒（200ms）後にロック
+                        this.lockDelayTimer = this.time.delayedCall(200, () => {
+                            this.lockPair();
+                        });
+                    }
+                }
+            }
+
+            async lockPair() {
+                this.isMoving = true;
+                
+                // ロック遅延タイマーをクリーンアップ
+                if (this.lockDelayTimer) {
+                    this.lockDelayTimer.remove();
+                    this.lockDelayTimer = null;
+                }
+                this.isOnGround = false;
+                
+                const positions = this.getPairPositions(
+                    this.currentPair.col, 
+                    this.currentPair.row, 
+                    this.currentPair.rotation
+                );
+                
+                // グリッドに配置
+                if (positions.main.row >= 0) {
+                    this.grid[positions.main.row][positions.main.col] = this.currentPair.main.sprite;
+                } else {
+                    this.currentPair.main.sprite.destroy();
+                }
+                
+                if (positions.sub.row >= 0) {
+                    this.grid[positions.sub.row][positions.sub.col] = this.currentPair.sub.sprite;
+                } else {
+                    this.currentPair.sub.sprite.destroy();
+                }
+                
+                this.currentPair = null;
+                
+                // 連鎖処理
+                this.chainCount = 0;
+                await this.checkAndClearMatches();
+                
+                // 落下処理
+                await this.applyGravity();
+                
+                // 次のペアを生成
+                this.isMoving = false;
+                this.spawnNewPair();
+            }
+
+            async checkAndClearMatches() {
+                let hasMatches = true;
+                
+                while (hasMatches) {
+                    const matched = this.findMatches();
+                    if (matched.length === 0) {
+                        hasMatches = false;
+                        this.chainText.setText('');
+                    } else {
+                        this.chainCount++;
+                        if (this.chainCount > 1) {
+                            this.chainText.setText(`${this.chainCount} 連鎖！`);
+                            this.tweens.add({
+                                targets: this.chainText,
+                                scale: 1.5,
+                                yoyo: true,
+                                duration: 200
+                            });
+                        }
+                        
+                        await this.clearPuyos(matched);
+                        this.score += matched.length * 10 * this.chainCount;
+                        this.scoreText.setText(`スコア: ${this.score}`);
+                        await this.applyGravity();
+                    }
+                }
+            }
+
+            findMatches() {
+                const visited = Array(ROWS).fill().map(() => Array(COLS).fill(false));
+                const allMatches = [];
+                
+                for (let row = 0; row < ROWS; row++) {
+                    for (let col = 0; col < COLS; col++) {
+                        if (this.grid[row][col] && this.grid[row][col].active && !visited[row][col]) {
+                            const group = this.floodFill(row, col, visited);
+                            if (group.length >= 4) {
+                                allMatches.push(...group);
+                            }
+                        }
+                    }
+                }
+                
+                return allMatches;
+            }
+
+            floodFill(startRow, startCol, visited) {
+                const startPuyo = this.grid[startRow][startCol];
+                if (!startPuyo || !startPuyo.active) return [];
+                
+                const color = startPuyo.getData('color');
+                if (!color) return [];
+                
+                const group = [];
+                const stack = [[startRow, startCol]];
+                
+                while (stack.length > 0) {
+                    const [row, col] = stack.pop();
+                    
+                    if (row < 0 || row >= ROWS || col < 0 || col >= COLS) continue;
+                    if (visited[row][col]) continue;
+                    
+                    const puyo = this.grid[row][col];
+                    if (!puyo || !puyo.active || puyo.getData('color') !== color) continue;
+                    
+                    visited[row][col] = true;
+                    group.push({ row, col });
+                    
+                    stack.push([row - 1, col], [row + 1, col], [row, col - 1], [row, col + 1]);
+                }
+                
+                return group;
+            }
+
+            async clearPuyos(matches) {
+                return new Promise(resolve => {
+                    // スプライトが存在するもののみフィルタリング
+                    const sprites = matches
+                        .map(m => this.grid[m.row][m.col])
+                        .filter(sprite => sprite && sprite.active);
+                    
+                    if (sprites.length === 0) {
+                        resolve();
+                        return;
+                    }
+                    
+                    // 連鎖数に応じた画面エフェクト
+                    if (this.chainCount > 1) {
+                        try {
+                            this.cameras.main.shake(150, 0.003 * this.chainCount);
+                            this.cameras.main.flash(200, 255, 255, 255, false, 0.1 * Math.min(this.chainCount, 3));
+                        } catch (e) {
+                            console.log('Camera effect error:', e);
+                        }
+                    }
+                    
+                    sprites.forEach((sprite, index) => {
+                        if (!sprite || !sprite.active) return;
+                        
+                        const color = sprite.getData('color');
+                        if (!color) return;
+                        
+                        const x = sprite.x;
+                        const y = sprite.y;
+                        
+                        // 爆発エフェクト（中心から外へ）
+                        for (let i = 0; i < 12; i++) {
+                            const angle = (i / 12) * Math.PI * 2;
+                            const distance = Phaser.Math.Between(40, 80);
+                            
+                            const particle = this.add.circle(x, y, Phaser.Math.Between(3, 8), COLOR_VALUES[color]);
+                            this.tweens.add({
+                                targets: particle,
+                                x: x + Math.cos(angle) * distance,
+                                y: y + Math.sin(angle) * distance,
+                                alpha: 0,
+                                scale: 0,
+                                duration: 500 + Phaser.Math.Between(0, 200),
+                                ease: 'Power2',
+                                onComplete: () => {
+                                    if (particle && particle.scene) particle.destroy();
+                                }
+                            });
+                        }
+                        
+                        // 星形パーティクル
+                        for (let i = 0; i < 5; i++) {
+                            const star = this.add.star(
+                                x + Phaser.Math.Between(-10, 10),
+                                y + Phaser.Math.Between(-10, 10),
+                                5, 3, 8, 0xffff00
+                            );
+                            this.tweens.add({
+                                targets: star,
+                                angle: 360,
+                                y: star.y - 50,
+                                alpha: 0,
+                                duration: 600,
+                                delay: i * 50,
+                                onComplete: () => {
+                                    if (star && star.scene) star.destroy();
+                                }
+                            });
+                        }
+                        
+                        // 光の輪エフェクト
+                        const ring = this.add.circle(x, y, 5, 0xffffff, 0.8);
+                        this.tweens.add({
+                            targets: ring,
+                            radius: 40,
+                            alpha: 0,
+                            duration: 400,
+                            delay: index * 30,
+                            onComplete: () => {
+                                if (ring && ring.scene) ring.destroy();
+                            }
+                        });
+                    });
+                    
+                    // メインの消滅アニメーション
+                    this.tweens.add({
+                        targets: sprites,
+                        scale: { from: 1, to: 0 },
+                        alpha: { from: 1, to: 0 },
+                        angle: 720,
+                        duration: 400,
+                        ease: 'Back.easeIn',
+                        onComplete: () => {
+                            sprites.forEach(sprite => {
+                                if (sprite && sprite.scene) sprite.destroy();
+                            });
+                            matches.forEach(m => {
+                                if (this.grid[m.row] && this.grid[m.row][m.col]) {
+                                    this.grid[m.row][m.col] = null;
+                                }
+                            });
+                            resolve();
+                        }
+                    });
+                });
+            }
+
+            async applyGravity() {
+                let moved = true;
+                
+                while (moved) {
+                    moved = false;
+                    for (let row = ROWS - 2; row >= 0; row--) {
+                        for (let col = 0; col < COLS; col++) {
+                            if (this.grid[row][col] && !this.grid[row + 1][col]) {
+                                this.grid[row + 1][col] = this.grid[row][col];
+                                this.grid[row][col] = null;
+                                
+                                // 落下アニメーション
+                                this.tweens.add({
+                                    targets: this.grid[row + 1][col],
+                                    y: (row + 1) * CELL_SIZE + CELL_SIZE / 2,
+                                    duration: 150,
+                                    ease: 'Bounce.easeOut'
+                                });
+                                
+                                moved = true;
+                            }
+                        }
+                    }
+                    if (moved) await this.delay(150);
+                }
+            }
+
+            delay(ms) {
+                return new Promise(resolve => this.time.delayedCall(ms, resolve));
+            }
+
+            endGame() {
+                this.gameOver = true;
+                this.dropTimer.remove();
+                
+                const gameOverText = this.add.text(
+                    COLS * CELL_SIZE / 2,
+                    ROWS * CELL_SIZE / 2,
+                    'GAME OVER',
+                    {
+                        fontSize: '48px',
+                        fill: '#fff',
+                        fontStyle: 'bold',
+                        stroke: '#000',
+                        strokeThickness: 4
+                    }
+                ).setOrigin(0.5);
+                
+                gameOverText.setAlpha(0);
+                this.tweens.add({
+                    targets: gameOverText,
+                    alpha: 1,
+                    scale: 1.2,
+                    duration: 500,
+                    ease: 'Bounce.easeOut'
+                });
+                
+                this.add.text(
+                    COLS * CELL_SIZE / 2,
+                    ROWS * CELL_SIZE / 2 + 60,
+                    'クリックでリスタート',
+                    {
+                        fontSize: '20px',
+                        fill: '#ffcc00'
+                    }
+                ).setOrigin(0.5);
+                
+                this.input.once('pointerdown', () => {
+                    this.scene.restart();
+                });
+            }
+        }
+
+        const config = {
+            type: Phaser.WEBGL,
+            canvas: document.createElement('canvas'),
+            width: COLS * CELL_SIZE + 250,
+            height: ROWS * CELL_SIZE,
+            parent: 'game-container',
+            backgroundColor: '#1a1a2e',
+            scene: PuyoPuyo,
+            render: {
+                antialias: true,
+                pixelArt: false,
+                roundPixels: false,
+                transparent: false,
+                clearBeforeRender: true,
+                preserveDrawingBuffer: false,
+                powerPreference: 'high-performance',
+                batchSize: 2048
+            },
+            scale: {
+                mode: Phaser.Scale.FIT,
+                autoCenter: Phaser.Scale.CENTER_BOTH,
+                width: COLS * CELL_SIZE + 250,
+                height: ROWS * CELL_SIZE,
+                parent: 'game-container'
+            },
+            dom: {
+                createContainer: false
+            },
+            fps: {
+                target: 60,
+                forceSetTimeOut: false
+            }
+        };
+
+        // 確実にロードが完了してから起動
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                new Phaser.Game(config);
+            }, 100);
+        });
+    </script>
+</body>
+</html>

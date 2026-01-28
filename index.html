@@ -1,0 +1,1491 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>ぷよぷよ オンライン対戦</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.70.0/dist/phaser.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Arial', sans-serif;
+            touch-action: none;
+        }
+        #game-container {
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            border-radius: 10px;
+            overflow: hidden;
+            max-width: 100%;
+            max-height: 100%;
+        }
+        canvas {
+            display: block;
+            margin: 0 auto;
+        }
+        
+        /* ロビー画面 */
+        #lobby {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.9);
+            padding: 40px;
+            border-radius: 20px;
+            text-align: center;
+            color: white;
+            z-index: 1000;
+            min-width: 400px;
+        }
+        
+        #lobby h1 {
+            margin-bottom: 30px;
+            color: #ffcc00;
+        }
+        
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            padding: 15px 30px;
+            margin: 10px;
+            border-radius: 10px;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        .btn:hover {
+            transform: scale(1.05);
+        }
+        
+        .btn:active {
+            transform: scale(0.95);
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        #roomCodeInput {
+            padding: 15px;
+            font-size: 18px;
+            border-radius: 10px;
+            border: 2px solid #667eea;
+            text-align: center;
+            margin: 10px;
+            width: 200px;
+            text-transform: uppercase;
+        }
+        
+        #roomCode {
+            font-size: 32px;
+            font-weight: bold;
+            color: #ffcc00;
+            margin: 20px 0;
+            letter-spacing: 5px;
+        }
+        
+        #status {
+            margin-top: 20px;
+            font-size: 16px;
+            color: #aaa;
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+    </style>
+</head>
+<body>
+    <!-- ロビー画面 -->
+    <div id="lobby">
+        <h1>🎮 ぷよぷよ オンライン対戦</h1>
+        
+        <div id="mainMenu">
+            <button class="btn" onclick="createRoom()">ルームを作成</button>
+            <br>
+            <input type="text" id="roomCodeInput" placeholder="ルームコード" maxlength="6">
+            <br>
+            <button class="btn" onclick="joinRoom()">ルームに参加</button>
+        </div>
+        
+        <div id="waitingRoom" class="hidden">
+            <h2>ルームコード</h2>
+            <div id="roomCode"></div>
+            <div id="status">プレイヤーを待っています...</div>
+            <button id="startBtn" class="btn" onclick="startGame()" disabled>ゲーム開始</button>
+            <br>
+            <button class="btn" onclick="leaveRoom()">退出</button>
+        </div>
+    </div>
+    
+    <div id="game-container"></div>
+    
+    <script>
+        const COLS = 6;
+        const ROWS = 12;
+        const CELL_SIZE = 50;
+        const BORDER_LINE = 2; // ボーダーライン（この行を超えたら負け）
+        const COLORS = ['red', 'blue', 'green', 'yellow', 'purple'];
+        const COLOR_VALUES = {
+            'red': 0xff3333,
+            'blue': 0x3366ff,
+            'green': 0x33cc33,
+            'yellow': 0xffcc00,
+            'purple': 0xcc33ff
+        };
+        
+        // WebSocket接続
+        let ws = null;
+        let currentRoom = null;
+        let isHost = false;
+        
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}`);
+            
+            ws.onopen = () => {
+                console.log('Connected to server');
+            };
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                handleServerMessage(data);
+            };
+            
+            ws.onclose = () => {
+                console.log('Disconnected from server');
+                setTimeout(connectWebSocket, 3000);
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+        }
+        
+        function handleServerMessage(data) {
+            switch (data.type) {
+                case 'room_created':
+                    currentRoom = data.roomCode;
+                    isHost = true;
+                    showWaitingRoom(data.roomCode);
+                    break;
+                    
+                case 'room_joined':
+                    currentRoom = data.roomCode;
+                    isHost = false;
+                    showWaitingRoom(data.roomCode);
+                    document.getElementById('startBtn').disabled = true;
+                    document.getElementById('status').textContent = 'ホストの開始を待っています...';
+                    break;
+                    
+                case 'player_joined':
+                    document.getElementById('status').textContent = 'プレイヤーが参加しました！';
+                    if (isHost) {
+                        document.getElementById('startBtn').disabled = false;
+                    }
+                    break;
+                    
+                case 'game_start':
+                    hideWaitingRoom();
+                    if (game && game.scene.scenes[0]) {
+                        game.scene.scenes[0].startNewGame();
+                    }
+                    break;
+                    
+                case 'player_left':
+                    if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
+                        game.scene.scenes[0].showMessage('相手が退出しました');
+                        setTimeout(() => {
+                            returnToLobby();
+                        }, 3000);
+                    } else {
+                        document.getElementById('status').textContent = 'プレイヤーが退出しました';
+                        document.getElementById('startBtn').disabled = true;
+                    }
+                    break;
+                    
+                case 'room_closed':
+                    alert(data.message);
+                    location.reload();
+                    break;
+                    
+                case 'error':
+                    alert(data.message);
+                    break;
+                    
+                case 'opponent_update':
+                    if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
+                        game.scene.scenes[0].updateOpponentField(data.data);
+                    }
+                    break;
+                    
+                case 'receive_garbage':
+                    if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
+                        game.scene.scenes[0].receiveGarbage(data.amount, data.colors, data.positions);
+                    }
+                    break;
+                    
+                case 'opponent_game_over':
+                    if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
+                        game.scene.scenes[0].handleOpponentGameOver();
+                    }
+                    break;
+            }
+        }
+        
+        function createRoom() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'create_room' }));
+            }
+        }
+        
+        function joinRoom() {
+            const roomCode = document.getElementById('roomCodeInput').value.toUpperCase();
+            if (roomCode.length === 6 && ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ 
+                    type: 'join_room',
+                    roomCode: roomCode
+                }));
+            } else {
+                alert('6桁のルームコードを入力してください');
+            }
+        }
+        
+        function startGame() {
+            if (ws && ws.readyState === WebSocket.OPEN && isHost) {
+                ws.send(JSON.stringify({ type: 'start_game' }));
+            }
+        }
+        
+        function leaveRoom() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'leave_room' }));
+            }
+            location.reload();
+        }
+        
+        function showWaitingRoom(roomCode) {
+            document.getElementById('mainMenu').classList.add('hidden');
+            document.getElementById('waitingRoom').classList.remove('hidden');
+            document.getElementById('roomCode').textContent = roomCode;
+        }
+        
+        function hideWaitingRoom() {
+            document.getElementById('lobby').classList.add('hidden');
+        }
+        
+        function returnToLobby() {
+            document.getElementById('lobby').classList.remove('hidden');
+            document.getElementById('waitingRoom').classList.add('hidden');
+            document.getElementById('mainMenu').classList.remove('hidden');
+            
+            if (isHost) {
+                document.getElementById('status').textContent = 'プレイヤーを待っています...';
+                document.getElementById('startBtn').disabled = true;
+            }
+        }
+
+        class MultiplayerPuyoPuyo extends Phaser.Scene {
+            constructor() {
+                super({ key: 'MultiplayerPuyoPuyo' });
+                this.grid = [];
+                this.opponentGrid = [];
+                this.currentPair = null;
+                this.nextPair = null;
+                this.score = 0;
+                this.opponentScore = 0;
+                this.gameOver = false;
+                this.isMoving = false;
+                this.chainCount = 0;
+                this.pendingGarbage = [];
+                this.gameStarted = false;
+            }
+
+            preload() {
+                this.createGradientTexture();
+            }
+
+            createGradientTexture() {
+                const graphics = this.add.graphics();
+                for (let i = 0; i < ROWS; i++) {
+                    const alpha = 0.1 + (i / ROWS) * 0.2;
+                    graphics.fillStyle(0x000000, alpha);
+                    graphics.fillRect(0, i * CELL_SIZE, COLS * CELL_SIZE, CELL_SIZE);
+                }
+                graphics.generateTexture('gradient', COLS * CELL_SIZE, ROWS * CELL_SIZE);
+                graphics.destroy();
+            }
+
+            create() {
+                const offsetX = 50;
+                
+                // 自分のフィールド（左側）
+                this.createField(offsetX, 'あなた');
+                
+                // 相手のフィールド（右側）
+                this.createOpponentField(offsetX + COLS * CELL_SIZE + 100);
+                
+                // グリッドの初期化
+                for (let row = 0; row < ROWS; row++) {
+                    this.grid[row] = [];
+                    this.opponentGrid[row] = [];
+                    for (let col = 0; col < COLS; col++) {
+                        this.grid[row][col] = null;
+                        this.opponentGrid[row][col] = null;
+                    }
+                }
+                
+                this.fieldOffsetX = offsetX;
+
+                // スコア表示
+                this.scoreText = this.add.text(offsetX, ROWS * CELL_SIZE + 20, 'スコア: 0', {
+                    fontSize: '20px',
+                    fill: '#fff',
+                    fontStyle: 'bold'
+                });
+
+                // チェイン表示
+                this.chainText = this.add.text(offsetX + COLS * CELL_SIZE / 2, ROWS * CELL_SIZE / 2, '', {
+                    fontSize: '32px',
+                    fill: '#ffcc00',
+                    fontStyle: 'bold'
+                }).setOrigin(0.5);
+
+                // Next表示
+                this.add.text(offsetX, 20, 'NEXT:', {
+                    fontSize: '18px',
+                    fill: '#fff'
+                });
+                this.nextContainer = this.add.container(offsetX + 30, 60);
+
+                // キーボード設定
+                this.cursors = this.input.keyboard.createCursorKeys();
+                this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+                
+                // タッチ・スワイプ設定
+                this.setupTouchControls();
+                
+                this.lastMoveTime = 0;
+                this.lastRotateTime = 0;
+                this.lockDelayTimer = null;
+                this.isOnGround = false;
+                this.lastMoveOrRotateTime = 0;
+                
+                // 待機メッセージ
+                this.waitingText = this.add.text(
+                    this.cameras.main.centerX,
+                    this.cameras.main.centerY,
+                    'ゲーム開始を待っています...',
+                    {
+                        fontSize: '32px',
+                        fill: '#fff',
+                        fontStyle: 'bold'
+                    }
+                ).setOrigin(0.5);
+            }
+            
+            startNewGame() {
+                if (this.gameStarted) return;
+                this.gameStarted = true;
+                
+                // 待機テキストを削除
+                if (this.waitingText) {
+                    this.waitingText.destroy();
+                    this.waitingText = null;
+                }
+                
+                // ゲーム状態をリセット
+                this.score = 0;
+                this.gameOver = false;
+                this.isMoving = false;
+                this.chainCount = 0;
+                this.pendingGarbage = [];
+                
+                // グリッドをクリア
+                for (let row = 0; row < ROWS; row++) {
+                    for (let col = 0; col < COLS; col++) {
+                        if (this.grid[row][col]) {
+                            this.grid[row][col].destroy();
+                            this.grid[row][col] = null;
+                        }
+                    }
+                }
+                
+                this.scoreText.setText('スコア: 0');
+                this.chainText.setText('');
+                
+                // ゲーム開始
+                this.nextPair = this.createPuyoPair();
+                this.spawnNewPair();
+                
+                if (this.dropTimer) {
+                    this.dropTimer.remove();
+                }
+                
+                this.dropTimer = this.time.addEvent({
+                    delay: 300,
+                    callback: this.autoDrop,
+                    callbackScope: this,
+                    loop: true
+                });
+            }
+            
+            createField(x, label) {
+                // 背景
+                this.add.rectangle(
+                    x + COLS * CELL_SIZE / 2, 
+                    ROWS * CELL_SIZE / 2, 
+                    COLS * CELL_SIZE, 
+                    ROWS * CELL_SIZE, 
+                    0x2c3e50
+                ).setOrigin(0.5);
+                
+                this.add.image(x, 0, 'gradient').setOrigin(0);
+                
+                // ボーダーライン（赤い点線）
+                const borderY = BORDER_LINE * CELL_SIZE;
+                const graphics = this.add.graphics();
+                graphics.lineStyle(3, 0xff0000, 0.8);
+                graphics.setDepth(100);
+                
+                // 点線を描画
+                for (let i = 0; i < COLS * CELL_SIZE; i += 10) {
+                    if (Math.floor(i / 10) % 2 === 0) {
+                        graphics.lineBetween(x + i, borderY, x + Math.min(i + 5, COLS * CELL_SIZE), borderY);
+                    }
+                }
+                
+                // ラベル
+                this.add.text(x + COLS * CELL_SIZE / 2, -25, label, {
+                    fontSize: '22px',
+                    fill: '#fff',
+                    fontStyle: 'bold'
+                }).setOrigin(0.5);
+            }
+            
+            createOpponentField(x) {
+                this.opponentFieldOffsetX = x;
+                
+                // 背景
+                this.add.rectangle(
+                    x + COLS * CELL_SIZE / 2, 
+                    ROWS * CELL_SIZE / 2, 
+                    COLS * CELL_SIZE, 
+                    ROWS * CELL_SIZE, 
+                    0x3c4e60
+                ).setOrigin(0.5).setAlpha(0.8);
+                
+                // ボーダーライン
+                const borderY = BORDER_LINE * CELL_SIZE;
+                const graphics = this.add.graphics();
+                graphics.lineStyle(3, 0xff0000, 0.6);
+                graphics.setDepth(100);
+                
+                for (let i = 0; i < COLS * CELL_SIZE; i += 10) {
+                    if (Math.floor(i / 10) % 2 === 0) {
+                        graphics.lineBetween(x + i, borderY, x + Math.min(i + 5, COLS * CELL_SIZE), borderY);
+                    }
+                }
+                
+                // ラベル
+                this.add.text(x + COLS * CELL_SIZE / 2, -25, '相手', {
+                    fontSize: '22px',
+                    fill: '#f00',
+                    fontStyle: 'bold'
+                }).setOrigin(0.5);
+                
+                // 相手のスコア表示
+                this.opponentScoreText = this.add.text(x, ROWS * CELL_SIZE + 20, '相手: 0', {
+                    fontSize: '20px',
+                    fill: '#f88',
+                    fontStyle: 'bold'
+                });
+            }
+            
+            updateOpponentField(gridData) {
+                // 既存の相手フィールドをクリア
+                for (let row = 0; row < ROWS; row++) {
+                    for (let col = 0; col < COLS; col++) {
+                        if (this.opponentGrid[row][col]) {
+                            this.opponentGrid[row][col].destroy();
+                            this.opponentGrid[row][col] = null;
+                        }
+                    }
+                }
+                
+                // 新しいデータで描画
+                for (let row = 0; row < ROWS; row++) {
+                    for (let col = 0; col < COLS; col++) {
+                        if (gridData[row][col]) {
+                            const x = this.opponentFieldOffsetX + col * CELL_SIZE + CELL_SIZE / 2;
+                            const y = row * CELL_SIZE + CELL_SIZE / 2;
+                            this.opponentGrid[row][col] = this.createPuyo(x, y, gridData[row][col], false, 0.6);
+                        }
+                    }
+                }
+            }
+            
+            setupTouchControls() {
+                this.touchStartX = 0;
+                this.touchStartY = 0;
+                this.touchStartTime = 0;
+                this.swipeThreshold = 30;
+                
+                this.input.on('pointerdown', (pointer) => {
+                    if (this.gameOver) return;
+                    this.touchStartX = pointer.x;
+                    this.touchStartY = pointer.y;
+                    this.touchStartTime = this.time.now;
+                });
+                
+                this.input.on('pointerup', (pointer) => {
+                    if (this.gameOver || !this.currentPair || this.isMoving) return;
+                    
+                    const deltaX = pointer.x - this.touchStartX;
+                    const deltaY = pointer.y - this.touchStartY;
+                    const deltaTime = this.time.now - this.touchStartTime;
+                    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                    
+                    if (distance < this.swipeThreshold && deltaTime < 300) {
+                        this.rotatePair();
+                    } else if (distance > this.swipeThreshold) {
+                        const angle = Math.atan2(deltaY, deltaX);
+                        const absAngle = Math.abs(angle);
+                        
+                        if (angle > Math.PI / 4 && angle < 3 * Math.PI / 4) {
+                            this.hardDrop();
+                        } else if (angle < -Math.PI / 4 && angle > -3 * Math.PI / 4) {
+                            this.rotatePair();
+                        } else if (absAngle < Math.PI / 4) {
+                            this.movePair(1);
+                        } else if (absAngle > 3 * Math.PI / 4) {
+                            this.movePair(-1);
+                        }
+                    }
+                });
+            }
+
+            createPuyo(x, y, color, isGhost = false, customAlpha = 1) {
+                const puyo = this.add.container(x, y);
+                const radius = CELL_SIZE * 0.38;
+                
+                const shadow = this.add.circle(2, 2, radius, 0x000000, 0.3);
+                puyo.add(shadow);
+                
+                const baseColor = COLOR_VALUES[color];
+                const body = this.add.circle(0, 0, radius, baseColor);
+                puyo.add(body);
+                
+                const darkPart = this.add.circle(0, radius * 0.2, radius * 0.9, 
+                    Phaser.Display.Color.IntegerToColor(baseColor).darken(15).color);
+                puyo.add(darkPart);
+                
+                const highlight1 = this.add.circle(-radius * 0.3, -radius * 0.3, radius * 0.4, 0xffffff, 0.5);
+                puyo.add(highlight1);
+                
+                const highlight2 = this.add.circle(radius * 0.2, -radius * 0.35, radius * 0.2, 0xffffff, 0.3);
+                puyo.add(highlight2);
+                
+                const outline = this.add.circle(0, 0, radius);
+                outline.setStrokeStyle(2, 0xffffff, 0.8);
+                outline.setFillStyle(0, 0);
+                puyo.add(outline);
+                
+                puyo.setData('color', color);
+                puyo.setAlpha(isGhost ? 0.3 : customAlpha);
+                puyo.setSize(CELL_SIZE, CELL_SIZE);
+                
+                if (!isGhost && customAlpha === 1) {
+                    puyo.setScale(0);
+                    puyo.setAngle(-180);
+                    this.tweens.add({
+                        targets: puyo,
+                        scale: 1,
+                        angle: 0,
+                        duration: 300,
+                        ease: 'Elastic.easeOut'
+                    });
+                    
+                    this.tweens.add({
+                        targets: puyo,
+                        scaleX: { from: 1, to: 1.08 },
+                        scaleY: { from: 1, to: 0.92 },
+                        duration: 800,
+                        yoyo: true,
+                        repeat: -1,
+                        ease: 'Sine.easeInOut'
+                    });
+                }
+                
+                return puyo;
+            }
+
+            createPuyoPair() {
+                const color1 = Phaser.Utils.Array.GetRandom(COLORS);
+                const color2 = Phaser.Utils.Array.GetRandom(COLORS);
+                return {
+                    main: { color: color1, sprite: null },
+                    sub: { color: color2, sprite: null },
+                    col: Math.floor(COLS / 2),
+                    row: 0,
+                    rotation: 0
+                };
+            }
+
+            spawnNewPair() {
+                if (this.gameOver) return;
+
+                this.currentPair = this.nextPair;
+                this.nextPair = this.createPuyoPair();
+
+                const startX = this.fieldOffsetX + this.currentPair.col * CELL_SIZE + CELL_SIZE / 2;
+                const startY = this.currentPair.row * CELL_SIZE + CELL_SIZE / 2;
+                
+                this.currentPair.main.sprite = this.createPuyo(startX, startY, this.currentPair.main.color);
+                this.currentPair.sub.sprite = this.createPuyo(startX, startY - CELL_SIZE, this.currentPair.sub.color);
+
+                this.currentPair.ghostMain = null;
+                this.currentPair.ghostSub = null;
+                
+                this.time.delayedCall(100, () => {
+                    if (this.currentPair) {
+                        this.updateGhostPieces();
+                    }
+                });
+
+                this.updateNextDisplay();
+
+                // ボーダーラインチェック
+                if (this.grid[BORDER_LINE][this.currentPair.col] !== null) {
+                    this.endGame();
+                }
+            }
+
+            updateGhostPieces() {
+                if (this.currentPair && this.currentPair.ghostMain) {
+                    this.currentPair.ghostMain.destroy();
+                    this.currentPair.ghostMain = null;
+                }
+                if (this.currentPair && this.currentPair.ghostSub) {
+                    this.currentPair.ghostSub.destroy();
+                    this.currentPair.ghostSub = null;
+                }
+
+                if (!this.currentPair || this.isMoving) return;
+
+                let dropRow = this.currentPair.row;
+                while (true) {
+                    const testRow = dropRow + 1;
+                    const positions = this.getPairPositions(this.currentPair.col, testRow, this.currentPair.rotation);
+                    if (!this.isValidPosition(positions)) break;
+                    dropRow = testRow;
+                }
+
+                if (dropRow === this.currentPair.row) return;
+
+                const ghostPositions = this.getPairPositions(this.currentPair.col, dropRow, this.currentPair.rotation);
+
+                const ghostMainX = this.fieldOffsetX + ghostPositions.main.col * CELL_SIZE + CELL_SIZE / 2;
+                const ghostMainY = ghostPositions.main.row * CELL_SIZE + CELL_SIZE / 2;
+                const ghostSubX = this.fieldOffsetX + ghostPositions.sub.col * CELL_SIZE + CELL_SIZE / 2;
+                const ghostSubY = ghostPositions.sub.row * CELL_SIZE + CELL_SIZE / 2;
+
+                this.currentPair.ghostMain = this.add.circle(
+                    ghostMainX, ghostMainY, CELL_SIZE * 0.25, 
+                    COLOR_VALUES[this.currentPair.main.color], 0.4
+                );
+                this.currentPair.ghostMain.setDepth(50);
+                this.currentPair.ghostMain.setStrokeStyle(1.5, 0xffffff, 0.6);
+
+                this.currentPair.ghostSub = this.add.circle(
+                    ghostSubX, ghostSubY, CELL_SIZE * 0.25, 
+                    COLOR_VALUES[this.currentPair.sub.color], 0.4
+                );
+                this.currentPair.ghostSub.setDepth(50);
+                this.currentPair.ghostSub.setStrokeStyle(1.5, 0xffffff, 0.6);
+            }
+
+            updateNextDisplay() {
+                this.nextContainer.removeAll(true);
+                const next1 = this.createPuyo(0, 0, this.nextPair.main.color);
+                const next2 = this.createPuyo(0, -CELL_SIZE, this.nextPair.sub.color);
+                next1.setScale(0.7);
+                next2.setScale(0.7);
+                this.nextContainer.add([next1, next2]);
+            }
+
+            update(time) {
+                if (this.gameOver || !this.currentPair || this.isMoving || !this.gameStarted) return;
+
+                if (this.cursors.left.isDown && time > this.lastMoveTime + 150) {
+                    this.movePair(-1);
+                    this.lastMoveTime = time;
+                } else if (this.cursors.right.isDown && time > this.lastMoveTime + 150) {
+                    this.movePair(1);
+                    this.lastMoveTime = time;
+                }
+
+                if (Phaser.Input.Keyboard.JustDown(this.spaceKey) && time > this.lastRotateTime + 200) {
+                    this.rotatePair();
+                    this.lastRotateTime = time;
+                }
+
+                if (Phaser.Input.Keyboard.JustDown(this.cursors.down)) {
+                    this.hardDrop();
+                }
+            }
+
+            movePair(dir) {
+                const newCol = this.currentPair.col + dir;
+                const positions = this.getPairPositions(newCol, this.currentPair.row, this.currentPair.rotation);
+                
+                if (this.isValidPosition(positions)) {
+                    this.currentPair.col = newCol;
+                    this.updatePairPosition();
+                    this.updateGhostPieces();
+                    this.lastMoveOrRotateTime = this.time.now;
+                    this.resetLockDelay();
+                }
+            }
+
+            rotatePair() {
+                const newRotation = (this.currentPair.rotation + 1) % 4;
+                const positions = this.getPairPositions(this.currentPair.col, this.currentPair.row, newRotation);
+                
+                if (this.isValidPosition(positions)) {
+                    this.currentPair.rotation = newRotation;
+                    this.updatePairPosition();
+                    this.updateGhostPieces();
+                    this.lastMoveOrRotateTime = this.time.now;
+                    this.resetLockDelay();
+                    
+                    this.tweens.add({
+                        targets: this.currentPair.main.sprite,
+                        angle: '+=360',
+                        duration: 200,
+                        ease: 'Back.easeOut'
+                    });
+                    
+                    this.tweens.add({
+                        targets: this.currentPair.sub.sprite,
+                        angle: '+=360',
+                        duration: 200,
+                        ease: 'Back.easeOut'
+                    });
+                }
+            }
+
+            resetLockDelay() {
+                if (this.lockDelayTimer) {
+                    this.lockDelayTimer.remove();
+                    this.lockDelayTimer = null;
+                }
+                this.isOnGround = false;
+            }
+
+            hardDrop() {
+                if (!this.currentPair || this.isMoving) return;
+                
+                let dropRow = this.currentPair.row;
+                while (true) {
+                    const testRow = dropRow + 1;
+                    const positions = this.getPairPositions(this.currentPair.col, testRow, this.currentPair.rotation);
+                    if (!this.isValidPosition(positions)) break;
+                    dropRow = testRow;
+                }
+                
+                const distance = dropRow - this.currentPair.row;
+                if (distance > 0) {
+                    this.currentPair.row = dropRow;
+                    
+                    const positions = this.getPairPositions(
+                        this.currentPair.col, 
+                        dropRow, 
+                        this.currentPair.rotation
+                    );
+                    
+                    this.tweens.add({
+                        targets: this.currentPair.main.sprite,
+                        x: this.fieldOffsetX + positions.main.col * CELL_SIZE + CELL_SIZE / 2,
+                        y: positions.main.row * CELL_SIZE + CELL_SIZE / 2,
+                        duration: 100,
+                        ease: 'Power2'
+                    });
+                    
+                    this.tweens.add({
+                        targets: this.currentPair.sub.sprite,
+                        x: this.fieldOffsetX + positions.sub.col * CELL_SIZE + CELL_SIZE / 2,
+                        y: positions.sub.row * CELL_SIZE + CELL_SIZE / 2,
+                        duration: 100,
+                        ease: 'Power2',
+                        onComplete: () => {
+                            this.lockPair();
+                        }
+                    });
+                }
+            }
+
+            getPairPositions(col, row, rotation) {
+                const main = { col: col, row: row };
+                let sub;
+                
+                switch(rotation) {
+                    case 0: sub = { col: col, row: row - 1 }; break;
+                    case 1: sub = { col: col + 1, row: row }; break;
+                    case 2: sub = { col: col, row: row + 1 }; break;
+                    case 3: sub = { col: col - 1, row: row }; break;
+                }
+                
+                return { main, sub };
+            }
+
+            isValidPosition(positions) {
+                for (let pos of [positions.main, positions.sub]) {
+                    if (pos.col < 0 || pos.col >= COLS || pos.row >= ROWS) return false;
+                    if (pos.row >= 0 && this.grid[pos.row][pos.col] !== null) return false;
+                }
+                return true;
+            }
+
+            updatePairPosition() {
+                const positions = this.getPairPositions(
+                    this.currentPair.col, 
+                    this.currentPair.row, 
+                    this.currentPair.rotation
+                );
+                
+                this.tweens.add({
+                    targets: this.currentPair.main.sprite,
+                    x: this.fieldOffsetX + positions.main.col * CELL_SIZE + CELL_SIZE / 2,
+                    y: positions.main.row * CELL_SIZE + CELL_SIZE / 2,
+                    duration: 100
+                });
+                
+                this.tweens.add({
+                    targets: this.currentPair.sub.sprite,
+                    x: this.fieldOffsetX + positions.sub.col * CELL_SIZE + CELL_SIZE / 2,
+                    y: positions.sub.row * CELL_SIZE + CELL_SIZE / 2,
+                    duration: 100
+                });
+            }
+
+            autoDrop() {
+                if (!this.gameOver && this.currentPair && !this.isMoving && this.gameStarted) {
+                    this.dropPair();
+                }
+            }
+
+            dropPair() {
+                const newRow = this.currentPair.row + 1;
+                const positions = this.getPairPositions(this.currentPair.col, newRow, this.currentPair.rotation);
+                
+                if (this.isValidPosition(positions)) {
+                    this.currentPair.row = newRow;
+                    this.updatePairPosition();
+                    this.updateGhostPieces();
+                    this.resetLockDelay();
+                } else {
+                    if (!this.isOnGround) {
+                        this.isOnGround = true;
+                        this.lockDelayTimer = this.time.delayedCall(500, () => {
+                            this.lockPair();
+                        });
+                    }
+                }
+            }
+
+            async lockPair() {
+                this.isMoving = true;
+                
+                if (this.lockDelayTimer) {
+                    this.lockDelayTimer.remove();
+                    this.lockDelayTimer = null;
+                }
+                this.isOnGround = false;
+                
+                if (this.currentPair.ghostMain) {
+                    this.currentPair.ghostMain.destroy();
+                    this.currentPair.ghostMain = null;
+                }
+                if (this.currentPair.ghostSub) {
+                    this.currentPair.ghostSub.destroy();
+                    this.currentPair.ghostSub = null;
+                }
+                
+                const positions = this.getPairPositions(
+                    this.currentPair.col, 
+                    this.currentPair.row, 
+                    this.currentPair.rotation
+                );
+                
+                if (positions.main.row >= 0) {
+                    this.grid[positions.main.row][positions.main.col] = this.currentPair.main.sprite;
+                } else {
+                    this.currentPair.main.sprite.destroy();
+                }
+                
+                if (positions.sub.row >= 0) {
+                    this.grid[positions.sub.row][positions.sub.col] = this.currentPair.sub.sprite;
+                } else {
+                    this.currentPair.sub.sprite.destroy();
+                }
+                
+                this.currentPair = null;
+                
+                this.chainCount = 0;
+                await this.checkAndClearMatches();
+                await this.applyGravity();
+                
+                // おじゃまぷよの処理（非同期で実行）
+                if (this.pendingGarbage.length > 0) {
+                    this.time.delayedCall(200, () => {
+                        this.dropGarbagePuyos();
+                    });
+                }
+                
+                this.sendFieldUpdate();
+                
+                this.isMoving = false;
+                this.spawnNewPair();
+            }
+
+            async checkAndClearMatches() {
+                let hasMatches = true;
+                let loopCount = 0;
+                const MAX_LOOPS = 20;
+                
+                while (hasMatches && loopCount < MAX_LOOPS) {
+                    loopCount++;
+                    const matched = this.findMatches();
+                    
+                    if (matched.length === 0) {
+                        hasMatches = false;
+                        this.chainText.setText('');
+                    } else {
+                        this.chainCount++;
+                        if (this.chainCount > 1) {
+                            this.chainText.setText(`${this.chainCount} 連鎖！`);
+                            this.tweens.add({
+                                targets: this.chainText,
+                                scale: 1.5,
+                                yoyo: true,
+                                duration: 200
+                            });
+                        }
+                        
+                        // 消えたぷよの位置情報を記録
+                        const positions = matched.map(m => ({
+                            x: this.fieldOffsetX + m.col * CELL_SIZE + CELL_SIZE / 2,
+                            y: m.row * CELL_SIZE + CELL_SIZE / 2
+                        }));
+                        
+                        await this.clearPuyos(matched);
+                        
+                        this.score += matched.length * 10 * this.chainCount;
+                        this.scoreText.setText(`スコア: ${this.score}`);
+                        
+                        // おじゃまぷよを送る（消した数の1/2を切り捨て）
+                        const garbageAmount = Math.floor(matched.length / 2);
+                        if (garbageAmount > 0) {
+                            this.sendGarbage(garbageAmount, positions);
+                        }
+                        
+                        await this.applyGravity();
+                        await this.delay(50);
+                    }
+                }
+            }
+
+            findMatches() {
+                const visited = Array(ROWS).fill().map(() => Array(COLS).fill(false));
+                const allMatches = [];
+                
+                for (let row = 0; row < ROWS; row++) {
+                    for (let col = 0; col < COLS; col++) {
+                        if (this.grid[row][col] && this.grid[row][col].active && !visited[row][col]) {
+                            const group = this.floodFill(row, col, visited);
+                            if (group.length >= 4) {
+                                allMatches.push(...group);
+                            }
+                        }
+                    }
+                }
+                
+                return allMatches;
+            }
+
+            floodFill(startRow, startCol, visited) {
+                const startPuyo = this.grid[startRow][startCol];
+                if (!startPuyo || !startPuyo.active) return [];
+                
+                const color = startPuyo.getData('color');
+                if (!color) return [];
+                
+                const group = [];
+                const stack = [[startRow, startCol]];
+                
+                while (stack.length > 0) {
+                    const [row, col] = stack.pop();
+                    
+                    if (row < 0 || row >= ROWS || col < 0 || col >= COLS) continue;
+                    if (visited[row][col]) continue;
+                    
+                    const puyo = this.grid[row][col];
+                    if (!puyo || !puyo.active || puyo.getData('color') !== color) continue;
+                    
+                    visited[row][col] = true;
+                    group.push({ row, col });
+                    
+                    stack.push([row - 1, col], [row + 1, col], [row, col - 1], [row, col + 1]);
+                }
+                
+                return group;
+            }
+
+            async clearPuyos(matches) {
+                return new Promise(resolve => {
+                    const uniqueMatches = [];
+                    const seen = new Set();
+                    
+                    for (const m of matches) {
+                        const key = `${m.row},${m.col}`;
+                        if (!seen.has(key)) {
+                            seen.add(key);
+                            uniqueMatches.push(m);
+                        }
+                    }
+                    
+                    const sprites = [];
+                    
+                    for (const m of uniqueMatches) {
+                        if (this.grid[m.row] && this.grid[m.row][m.col]) {
+                            const sprite = this.grid[m.row][m.col];
+                            if (sprite && sprite.active && sprite.scene) {
+                                sprites.push(sprite);
+                            }
+                        }
+                    }
+                    
+                    if (sprites.length === 0) {
+                        resolve();
+                        return;
+                    }
+                    
+                    for (const m of uniqueMatches) {
+                        if (this.grid[m.row] && this.grid[m.row][m.col]) {
+                            this.grid[m.row][m.col] = null;
+                        }
+                    }
+                    
+                    if (this.chainCount > 1) {
+                        try {
+                            this.cameras.main.shake(100, 0.002 * this.chainCount);
+                        } catch (e) {}
+                    }
+                    
+                    sprites.forEach((sprite, index) => {
+                        if (!sprite || !sprite.active || !sprite.scene) return;
+                        
+                        const color = sprite.getData('color');
+                        const x = sprite.x;
+                        const y = sprite.y;
+                        
+                        // 破壊エフェクト強化
+                        for (let i = 0; i < 8; i++) {
+                            const angle = (i / 8) * Math.PI * 2;
+                            const distance = 40 + Math.random() * 20;
+                            
+                            try {
+                                const particle = this.add.circle(x, y, 6, COLOR_VALUES[color]);
+                                this.tweens.add({
+                                    targets: particle,
+                                    x: x + Math.cos(angle) * distance,
+                                    y: y + Math.sin(angle) * distance,
+                                    alpha: 0,
+                                    scale: 0.2,
+                                    duration: 500 + Math.random() * 200,
+                                    ease: 'Power2',
+                                    onComplete: () => {
+                                        try {
+                                            if (particle && particle.scene) particle.destroy();
+                                        } catch (e) {}
+                                    }
+                                });
+                            } catch (e) {}
+                        }
+                        
+                        // 光の輪
+                        try {
+                            const ring = this.add.circle(x, y, 10, 0xffffff, 0.8);
+                            this.tweens.add({
+                                targets: ring,
+                                radius: 40,
+                                alpha: 0,
+                                duration: 400,
+                                onComplete: () => {
+                                    try {
+                                        if (ring && ring.scene) ring.destroy();
+                                    } catch (e) {}
+                                }
+                            });
+                        } catch (e) {}
+                    });
+                    
+                    try {
+                        this.tweens.add({
+                            targets: sprites,
+                            scale: { from: 1, to: 0 },
+                            alpha: { from: 1, to: 0 },
+                            duration: 400,
+                            ease: 'Back.easeIn',
+                            onComplete: () => {
+                                sprites.forEach(sprite => {
+                                    try {
+                                        if (sprite && sprite.scene) {
+                                            this.tweens.killTweensOf(sprite);
+                                            sprite.destroy();
+                                        }
+                                    } catch (e) {}
+                                });
+                                resolve();
+                            }
+                        });
+                    } catch (e) {
+                        sprites.forEach(sprite => {
+                            try {
+                                if (sprite && sprite.scene) {
+                                    this.tweens.killTweensOf(sprite);
+                                    sprite.destroy();
+                                }
+                            } catch (e) {}
+                        });
+                        resolve();
+                    }
+                });
+            }
+
+            async applyGravity() {
+                let moved = true;
+                
+                while (moved) {
+                    moved = false;
+                    for (let row = ROWS - 2; row >= 0; row--) {
+                        for (let col = 0; col < COLS; col++) {
+                            if (this.grid[row][col] && !this.grid[row + 1][col]) {
+                                this.grid[row + 1][col] = this.grid[row][col];
+                                this.grid[row][col] = null;
+                                
+                                this.tweens.add({
+                                    targets: this.grid[row + 1][col],
+                                    y: (row + 1) * CELL_SIZE + CELL_SIZE / 2,
+                                    duration: 150,
+                                    ease: 'Bounce.easeOut'
+                                });
+                                
+                                moved = true;
+                            }
+                        }
+                    }
+                    if (moved) await this.delay(150);
+                }
+            }
+
+            delay(ms) {
+                return new Promise(resolve => this.time.delayedCall(ms, resolve));
+            }
+            
+            // WebSocket通信
+            sendFieldUpdate() {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    const gridData = [];
+                    for (let row = 0; row < ROWS; row++) {
+                        gridData[row] = [];
+                        for (let col = 0; col < COLS; col++) {
+                            if (this.grid[row][col] && this.grid[row][col].active) {
+                                gridData[row][col] = this.grid[row][col].getData('color');
+                            } else {
+                                gridData[row][col] = null;
+                            }
+                        }
+                    }
+                    
+                    ws.send(JSON.stringify({
+                        type: 'game_update',
+                        gameState: gridData
+                    }));
+                }
+            }
+            
+            sendGarbage(amount, sourcePositions) {
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    const colors = [];
+                    for (let i = 0; i < amount; i++) {
+                        colors.push(Phaser.Utils.Array.GetRandom(COLORS));
+                    }
+                    
+                    // 飛んでいくアニメーション
+                    sourcePositions.slice(0, amount).forEach((pos, i) => {
+                        const particle = this.add.circle(pos.x, pos.y, CELL_SIZE * 0.3, 0x888888, 0.9);
+                        particle.setDepth(200);
+                        
+                        const targetX = this.opponentFieldOffsetX + COLS * CELL_SIZE / 2;
+                        const targetY = -50;
+                        
+                        this.tweens.add({
+                            targets: particle,
+                            x: targetX,
+                            y: targetY,
+                            scale: 0.5,
+                            alpha: 0.5,
+                            duration: 600,
+                            delay: i * 50,
+                            ease: 'Power2',
+                            onComplete: () => {
+                                particle.destroy();
+                            }
+                        });
+                    });
+                    
+                    ws.send(JSON.stringify({
+                        type: 'send_garbage',
+                        amount: amount,
+                        colors: colors,
+                        positions: sourcePositions
+                    }));
+                }
+            }
+            
+            receiveGarbage(amount, colors, positions) {
+                // おじゃまぷよを受け取る（非同期で処理）
+                for (let i = 0; i < amount; i++) {
+                    this.pendingGarbage.push(colors[i]);
+                }
+            }
+            
+            async dropGarbagePuyos() {
+                if (this.pendingGarbage.length === 0) return;
+                
+                const garbageToDrop = [...this.pendingGarbage];
+                this.pendingGarbage = [];
+                
+                for (const color of garbageToDrop) {
+                    // ランダムな列を選択
+                    const col = Phaser.Math.Between(0, COLS - 1);
+                    
+                    // 上から降らせる（画面外から）
+                    const startY = -CELL_SIZE;
+                    const x = this.fieldOffsetX + col * CELL_SIZE + CELL_SIZE / 2;
+                    
+                    // 一番上の空いている位置を探す
+                    let targetRow = 0;
+                    for (let row = ROWS - 1; row >= 0; row--) {
+                        if (!this.grid[row][col]) {
+                            targetRow = row;
+                            break;
+                        }
+                    }
+                    
+                    // おじゃまぷよを作成（画面外から）
+                    const puyo = this.createPuyo(x, startY, color);
+                    this.grid[targetRow][col] = puyo;
+                    
+                    // 落下アニメーション
+                    this.tweens.add({
+                        targets: puyo,
+                        y: targetRow * CELL_SIZE + CELL_SIZE / 2,
+                        duration: 300 + targetRow * 30,
+                        ease: 'Bounce.easeOut'
+                    });
+                    
+                    await this.delay(150);
+                }
+                
+                await this.delay(300);
+                await this.applyGravity();
+                
+                // ボーダーラインチェック
+                this.checkBorderLine();
+            }
+            
+            checkBorderLine() {
+                // ボーダーラインにぷよがあるかチェック
+                for (let col = 0; col < COLS; col++) {
+                    if (this.grid[BORDER_LINE][col] !== null) {
+                        this.endGame();
+                        return;
+                    }
+                }
+            }
+            
+            showMessage(text) {
+                const message = this.add.text(
+                    this.cameras.main.centerX,
+                    this.cameras.main.centerY,
+                    text,
+                    {
+                        fontSize: '48px',
+                        fill: '#fff',
+                        fontStyle: 'bold',
+                        stroke: '#000',
+                        strokeThickness: 4
+                    }
+                ).setOrigin(0.5).setDepth(1000);
+                
+                message.setAlpha(0);
+                this.tweens.add({
+                    targets: message,
+                    alpha: 1,
+                    scale: 1.2,
+                    duration: 500,
+                    ease: 'Bounce.easeOut'
+                });
+            }
+            
+            handleOpponentGameOver() {
+                this.gameOver = true;
+                if (this.dropTimer) {
+                    this.dropTimer.remove();
+                }
+                
+                this.showMessage('勝利！');
+                
+                // 5秒後にロビーに戻る
+                this.time.delayedCall(5000, () => {
+                    this.resetGame();
+                    returnToLobby();
+                });
+            }
+
+            endGame() {
+                this.gameOver = true;
+                if (this.dropTimer) {
+                    this.dropTimer.remove();
+                }
+                
+                this.showMessage('敗北...');
+                
+                // サーバーに通知
+                if (ws && ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'game_over'
+                    }));
+                }
+                
+                // 5秒後にロビーに戻る
+                this.time.delayedCall(5000, () => {
+                    this.resetGame();
+                    returnToLobby();
+                });
+            }
+            
+            resetGame() {
+                // ゲーム状態をリセット
+                this.gameStarted = false;
+                this.score = 0;
+                this.gameOver = false;
+                this.isMoving = false;
+                this.chainCount = 0;
+                this.pendingGarbage = [];
+                
+                // グリッドをクリア
+                for (let row = 0; row < ROWS; row++) {
+                    for (let col = 0; col < COLS; col++) {
+                        if (this.grid[row][col]) {
+                            this.grid[row][col].destroy();
+                            this.grid[row][col] = null;
+                        }
+                        if (this.opponentGrid[row][col]) {
+                            this.opponentGrid[row][col].destroy();
+                            this.opponentGrid[row][col] = null;
+                        }
+                    }
+                }
+                
+                if (this.currentPair) {
+                    if (this.currentPair.main.sprite) this.currentPair.main.sprite.destroy();
+                    if (this.currentPair.sub.sprite) this.currentPair.sub.sprite.destroy();
+                    if (this.currentPair.ghostMain) this.currentPair.ghostMain.destroy();
+                    if (this.currentPair.ghostSub) this.currentPair.ghostSub.destroy();
+                    this.currentPair = null;
+                }
+                
+                // メッセージをクリア
+                this.children.list.forEach(child => {
+                    if (child.type === 'Text' && (child.text === '勝利！' || child.text === '敗北...')) {
+                        child.destroy();
+                    }
+                });
+            }
+        }
+
+        let game = null;
+        
+        function initGame() {
+            if (game) return;
+            
+            const config = {
+                type: Phaser.WEBGL,
+                canvas: document.createElement('canvas'),
+                width: COLS * CELL_SIZE * 2 + 200,
+                height: ROWS * CELL_SIZE + 100,
+                parent: 'game-container',
+                backgroundColor: '#1a1a2e',
+                scene: MultiplayerPuyoPuyo,
+                render: {
+                    antialias: true,
+                    pixelArt: false,
+                    roundPixels: false,
+                    transparent: false,
+                    clearBeforeRender: true,
+                    preserveDrawingBuffer: false,
+                    powerPreference: 'high-performance',
+                    batchSize: 2048
+                },
+                scale: {
+                    mode: Phaser.Scale.FIT,
+                    autoCenter: Phaser.Scale.CENTER_BOTH,
+                    width: COLS * CELL_SIZE * 2 + 200,
+                    height: ROWS * CELL_SIZE + 100,
+                    parent: 'game-container'
+                },
+                dom: {
+                    createContainer: false
+                },
+                fps: {
+                    target: 120,
+                    forceSetTimeOut: false,
+                    min: 30,
+                    smoothStep: true
+                }
+            };
+            
+            game = new Phaser.Game(config);
+        }
+        
+        // ページロード時にWebSocket接続とゲーム初期化
+        window.addEventListener('load', () => {
+            connectWebSocket();
+            initGame();
+        });
+    </script>
+</body>
+</html>

@@ -604,7 +604,7 @@
                     if (!this.isOnGround) {
                         this.isOnGround = true;
                         // 0.2秒（200ms）後にロック
-                        this.lockDelayTimer = this.time.delayedCall(200, () => {
+                        this.lockDelayTimer = this.time.delayedCall(500, () => {
                             this.lockPair();
                         });
                     }

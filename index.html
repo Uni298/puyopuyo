@@ -193,7 +193,7 @@
                 this.nextPair = this.createPuyoPair();
                 this.spawnNewPair();
                 this.dropTimer = this.time.addEvent({
-                    delay: 250, // 150の半分
+                    delay: 300,
                     callback: this.autoDrop,
                     callbackScope: this,
                     loop: true
@@ -730,10 +730,31 @@
 
             async clearPuyos(matches) {
                 return new Promise(resolve => {
+                    // 重複を削除
+                    const uniqueMatches = [];
+                    const seen = new Set();
+                    
+                    for (const m of matches) {
+                        const key = `${m.row},${m.col}`;
+                        if (!seen.has(key)) {
+                            seen.add(key);
+                            uniqueMatches.push(m);
+                        }
+                    }
+                    
                     // スプライトが存在するもののみフィルタリング
-                    const sprites = matches
-                        .map(m => this.grid[m.row][m.col])
-                        .filter(sprite => sprite && sprite.active);
+                    const validMatches = [];
+                    const sprites = [];
+                    
+                    for (const m of uniqueMatches) {
+                        if (this.grid[m.row] && this.grid[m.row][m.col]) {
+                            const sprite = this.grid[m.row][m.col];
+                            if (sprite && sprite.active && sprite.scene) {
+                                validMatches.push(m);
+                                sprites.push(sprite);
+                            }
+                        }
+                    }
                     
                     if (sprites.length === 0) {
                         resolve();
@@ -750,8 +771,13 @@
                         }
                     }
                     
+                    // 先にグリッドからnullにする（重要！）
+                    validMatches.forEach(m => {
+                        this.grid[m.row][m.col] = null;
+                    });
+                    
                     sprites.forEach((sprite, index) => {
-                        if (!sprite || !sprite.active) return;
+                        if (!sprite || !sprite.active || !sprite.scene) return;
                         
                         const color = sprite.getData('color');
                         if (!color) return;
@@ -823,11 +849,8 @@
                         ease: 'Back.easeIn',
                         onComplete: () => {
                             sprites.forEach(sprite => {
-                                if (sprite && sprite.scene) sprite.destroy();
-                            });
-                            matches.forEach(m => {
-                                if (this.grid[m.row] && this.grid[m.row][m.col]) {
-                                    this.grid[m.row][m.col] = null;
+                                if (sprite && sprite.scene) {
+                                    sprite.destroy();
                                 }
                             });
                             resolve();

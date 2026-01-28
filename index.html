@@ -312,6 +312,17 @@
                 this.currentPair.main.sprite = this.createPuyo(startX, startY, this.currentPair.main.color);
                 this.currentPair.sub.sprite = this.createPuyo(startX, startY - CELL_SIZE, this.currentPair.sub.color);
 
+                // ゴーストピース初期化
+                this.currentPair.ghostMain = null;
+                this.currentPair.ghostSub = null;
+                
+                // 少し遅延してゴーストを作成（スプライト作成完了後）
+                this.time.delayedCall(100, () => {
+                    if (this.currentPair) {
+                        this.updateGhostPieces();
+                    }
+                });
+
                 // Next表示更新
                 this.updateNextDisplay();
 
@@ -320,6 +331,63 @@
                     this.grid[1][this.currentPair.col] !== null) {
                     this.endGame();
                 }
+            }
+
+            updateGhostPieces() {
+                // 既存のゴーストを削除
+                if (this.currentPair && this.currentPair.ghostMain) {
+                    this.currentPair.ghostMain.destroy();
+                    this.currentPair.ghostMain = null;
+                }
+                if (this.currentPair && this.currentPair.ghostSub) {
+                    this.currentPair.ghostSub.destroy();
+                    this.currentPair.ghostSub = null;
+                }
+
+                if (!this.currentPair || this.isMoving) return;
+
+                // ハードドロップ時の着地位置を計算
+                let dropRow = this.currentPair.row;
+                while (true) {
+                    const testRow = dropRow + 1;
+                    const positions = this.getPairPositions(this.currentPair.col, testRow, this.currentPair.rotation);
+                    if (!this.isValidPosition(positions)) break;
+                    dropRow = testRow;
+                }
+
+                // 現在位置と同じ場合はゴーストを表示しない
+                if (dropRow === this.currentPair.row) return;
+
+                // ハードドロップ後の最終着地位置
+                const ghostPositions = this.getPairPositions(this.currentPair.col, dropRow, this.currentPair.rotation);
+
+                // ゴーストピース作成（小さい半透明の円）
+                const ghostMainX = ghostPositions.main.col * CELL_SIZE + CELL_SIZE / 2;
+                const ghostMainY = ghostPositions.main.row * CELL_SIZE + CELL_SIZE / 2;
+                const ghostSubX = ghostPositions.sub.col * CELL_SIZE + CELL_SIZE / 2;
+                const ghostSubY = ghostPositions.sub.row * CELL_SIZE + CELL_SIZE / 2;
+
+                // Main ghost - 小さい半透明の色付き円
+                this.currentPair.ghostMain = this.add.circle(
+                    ghostMainX, 
+                    ghostMainY, 
+                    CELL_SIZE * 0.25, 
+                    COLOR_VALUES[this.currentPair.main.color], 
+                    0.4
+                );
+                this.currentPair.ghostMain.setDepth(50);
+                this.currentPair.ghostMain.setStrokeStyle(1.5, 0xffffff, 0.6);
+
+                // Sub ghost - 小さい半透明の色付き円
+                this.currentPair.ghostSub = this.add.circle(
+                    ghostSubX, 
+                    ghostSubY, 
+                    CELL_SIZE * 0.25, 
+                    COLOR_VALUES[this.currentPair.sub.color], 
+                    0.4
+                );
+                this.currentPair.ghostSub.setDepth(50);
+                this.currentPair.ghostSub.setStrokeStyle(1.5, 0xffffff, 0.6);
             }
 
             updateNextDisplay() {
@@ -362,6 +430,7 @@
                 if (this.isValidPosition(positions)) {
                     this.currentPair.col = newCol;
                     this.updatePairPosition();
+                    this.updateGhostPieces();
                     this.lastMoveOrRotateTime = this.time.now;
                     this.resetLockDelay();
                 }
@@ -374,6 +443,7 @@
                 if (this.isValidPosition(positions)) {
                     this.currentPair.rotation = newRotation;
                     this.updatePairPosition();
+                    this.updateGhostPieces();
                     this.lastMoveOrRotateTime = this.time.now;
                     this.resetLockDelay();
                     
@@ -598,6 +668,7 @@
                 if (this.isValidPosition(positions)) {
                     this.currentPair.row = newRow;
                     this.updatePairPosition();
+                    this.updateGhostPieces();
                     this.resetLockDelay();
                 } else {
                     // 地面に着いた
@@ -620,6 +691,16 @@
                     this.lockDelayTimer = null;
                 }
                 this.isOnGround = false;
+                
+                // ゴーストピースを削除
+                if (this.currentPair.ghostMain) {
+                    this.currentPair.ghostMain.destroy();
+                    this.currentPair.ghostMain = null;
+                }
+                if (this.currentPair.ghostSub) {
+                    this.currentPair.ghostSub.destroy();
+                    this.currentPair.ghostSub = null;
+                }
                 
                 const positions = this.getPairPositions(
                     this.currentPair.col, 
@@ -656,9 +737,13 @@
 
             async checkAndClearMatches() {
                 let hasMatches = true;
+                let loopCount = 0; // 無限ループ防止
+                const MAX_LOOPS = 20; // 最大20連鎖まで
                 
-                while (hasMatches) {
+                while (hasMatches && loopCount < MAX_LOOPS) {
+                    loopCount++;
                     const matched = this.findMatches();
+                    
                     if (matched.length === 0) {
                         hasMatches = false;
                         this.chainText.setText('');
@@ -674,11 +759,22 @@
                             });
                         }
                         
+                        // ぷよを消す（完全に待つ）
                         await this.clearPuyos(matched);
+                        
                         this.score += matched.length * 10 * this.chainCount;
                         this.scoreText.setText(`スコア: ${this.score}`);
+                        
+                        // 重力を適用（完全に待つ）
                         await this.applyGravity();
+                        
+                        // 次のチェックの前に少し待つ（アニメーション完了を確実にする）
+                        await this.delay(50);
                     }
+                }
+                
+                if (loopCount >= MAX_LOOPS) {
+                    console.warn('Chain limit reached');
                 }
             }
 
@@ -743,17 +839,13 @@
                     }
                     
                     // スプライトが存在するもののみフィルタリング
-                    const validMatches = [];
                     const sprites = [];
                     
                     for (const m of uniqueMatches) {
                         if (this.grid[m.row] && this.grid[m.row][m.col]) {
                             const sprite = this.grid[m.row][m.col];
                             if (sprite && sprite.active && sprite.scene) {
-                                validMatches.push(m);
                                 sprites.push(sprite);
-                                // 先にグリッドからnullにする
-                                this.grid[m.row][m.col] = null;
                             }
                         }
                     }
@@ -763,14 +855,18 @@
                         return;
                     }
                     
+                    // 先にグリッドからクリア
+                    for (const m of uniqueMatches) {
+                        if (this.grid[m.row] && this.grid[m.row][m.col]) {
+                            this.grid[m.row][m.col] = null;
+                        }
+                    }
+                    
                     // 連鎖数に応じた画面エフェクト
                     if (this.chainCount > 1) {
                         try {
-                            this.cameras.main.shake(150, 0.003 * this.chainCount);
-                            this.cameras.main.flash(200, 255, 255, 255, false, 0.1 * Math.min(this.chainCount, 3));
-                        } catch (e) {
-                            // エラーを無視
-                        }
+                            this.cameras.main.shake(100, 0.002 * this.chainCount);
+                        } catch (e) {}
                     }
                     
                     sprites.forEach((sprite, index) => {
@@ -785,20 +881,20 @@
                         // 既存のTweenを停止
                         this.tweens.killTweensOf(sprite);
                         
-                        // 爆発エフェクト（中心から外へ）
-                        for (let i = 0; i < 12; i++) {
-                            const angle = (i / 12) * Math.PI * 2;
-                            const distance = Phaser.Math.Between(40, 80);
+                        // 爆発エフェクト（6個に削減）
+                        for (let i = 0; i < 6; i++) {
+                            const angle = (i / 6) * Math.PI * 2;
+                            const distance = 50;
                             
                             try {
-                                const particle = this.add.circle(x, y, Phaser.Math.Between(3, 8), COLOR_VALUES[color]);
+                                const particle = this.add.circle(x, y, 5, COLOR_VALUES[color]);
                                 this.tweens.add({
                                     targets: particle,
                                     x: x + Math.cos(angle) * distance,
                                     y: y + Math.sin(angle) * distance,
                                     alpha: 0,
                                     scale: 0,
-                                    duration: 500 + Phaser.Math.Between(0, 200),
+                                    duration: 400,
                                     ease: 'Power2',
                                     onComplete: () => {
                                         try {
@@ -809,39 +905,14 @@
                             } catch (e) {}
                         }
                         
-                        // 星形パーティクル
-                        for (let i = 0; i < 5; i++) {
-                            try {
-                                const star = this.add.star(
-                                    x + Phaser.Math.Between(-10, 10),
-                                    y + Phaser.Math.Between(-10, 10),
-                                    5, 3, 8, 0xffff00
-                                );
-                                this.tweens.add({
-                                    targets: star,
-                                    angle: 360,
-                                    y: star.y - 50,
-                                    alpha: 0,
-                                    duration: 600,
-                                    delay: i * 50,
-                                    onComplete: () => {
-                                        try {
-                                            if (star && star.scene) star.destroy();
-                                        } catch (e) {}
-                                    }
-                                });
-                            } catch (e) {}
-                        }
-                        
-                        // 光の輪エフェクト
+                        // 光の輪エフェクト（1つのみ）
                         try {
-                            const ring = this.add.circle(x, y, 5, 0xffffff, 0.8);
+                            const ring = this.add.circle(x, y, 5, 0xffffff, 0.6);
                             this.tweens.add({
                                 targets: ring,
-                                radius: 40,
+                                radius: 30,
                                 alpha: 0,
-                                duration: 400,
-                                delay: index * 30,
+                                duration: 300,
                                 onComplete: () => {
                                     try {
                                         if (ring && ring.scene) ring.destroy();
@@ -851,14 +922,13 @@
                         } catch (e) {}
                     });
                     
-                    // メインの消滅アニメーション
+                    // メインの消滅アニメーション - これが完了してからresolve
                     try {
                         this.tweens.add({
                             targets: sprites,
                             scale: { from: 1, to: 0 },
                             alpha: { from: 1, to: 0 },
-                            angle: 720,
-                            duration: 400,
+                            duration: 300,
                             ease: 'Back.easeIn',
                             onComplete: () => {
                                 sprites.forEach(sprite => {
@@ -869,11 +939,12 @@
                                         }
                                     } catch (e) {}
                                 });
+                                // アニメーション完了後にresolve
                                 resolve();
                             }
                         });
                     } catch (e) {
-                        // アニメーションが失敗した場合でもスプライトを破棄
+                        // エラー時でもスプライトを破棄してresolve
                         sprites.forEach(sprite => {
                             try {
                                 if (sprite && sprite.scene) {
@@ -990,14 +1061,45 @@
             },
             fps: {
                 target: 120,
-                forceSetTimeOut: false
+                forceSetTimeOut: false,
+                min: 30,
+                smoothStep: true
+            },
+            plugins: {
+                global: []
             }
         };
+
+        // FPSカウンター表示（オプション）
+        let fpsText = null;
 
         // 確実にロードが完了してから起動
         window.addEventListener('load', () => {
             setTimeout(() => {
-                new Phaser.Game(config);
+                const game = new Phaser.Game(config);
+                
+                // FPS表示（デバッグ用 - 不要なら削除可能）
+                game.events.on('ready', () => {
+                    const scene = game.scene.scenes[0];
+                    if (scene) {
+                        fpsText = scene.add.text(10, 10, 'FPS: 60', {
+                            fontSize: '16px',
+                            fill: '#00ff00',
+                            backgroundColor: '#000000',
+                            padding: { x: 5, y: 2 }
+                        }).setDepth(1000);
+                        
+                        scene.time.addEvent({
+                            delay: 100,
+                            callback: () => {
+                                if (fpsText && fpsText.scene) {
+                                    fpsText.setText(`FPS: ${Math.round(game.loop.actualFps)}`);
+                                }
+                            },
+                            loop: true
+                        });
+                    }
+                });
             }, 100);
         });
     </script>

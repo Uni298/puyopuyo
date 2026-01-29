@@ -954,6 +954,9 @@
           }
 
           toggleZoom(playerId) {
+              // 観戦者（ゲームオーバー状態）のみズーム可能
+              if (!this.gameOver) return;
+
               const field = this.opponentFields.get(playerId);
               if (!field) return;
 
@@ -1984,8 +1987,8 @@
                   });
               }
               
-              // 画面振動 (小)
-              this.cameras.main.shake(300, 0.01);
+              // 画面振動 (大)
+              this.cameras.main.shake(800, 0.02);
 
               // 背景の崩壊
               if (field.bg) {
@@ -1993,7 +1996,7 @@
                       targets: field.bg,
                       alpha: 0,
                       scaleY: 0,
-                      duration: 800,
+                      duration: 1500,
                       ease: 'Power2',
                       onComplete: () => {
                           if (field.bg) field.bg.destroy();
@@ -2007,22 +2010,22 @@
                       if (field.grid[row][col]) {
                           const puyo = field.grid[row][col];
                           const angle = Phaser.Math.Between(0, 360);
-                          const distance = Phaser.Math.Between(50, 150);
+                          const distance = Phaser.Math.Between(100, 300); // 距離増加
                           
                           // 爆発パーティクル
-                          for (let i = 0; i < 3; i++) {
+                          for (let i = 0; i < 5; i++) { // パーティクル増加
                               const pData = puyo.getData('color') || 'gray';
                               const pColor = COLOR_VALUES[pData];
                               const p = this.add.circle(puyo.x, puyo.y, 4, pColor, 1);
                               const pAngle = Phaser.Math.Between(0, 360);
-                              const pDist = Phaser.Math.Between(50, 200);
+                              const pDist = Phaser.Math.Between(50, 250);
                               
                               this.tweens.add({
                                   targets: p,
                                   x: puyo.x + Math.cos(pAngle) * pDist,
                                   y: puyo.y + Math.sin(pAngle) * pDist,
                                   alpha: 0,
-                                  duration: 600,
+                                  duration: 1000,
                                   ease: 'Power2',
                                   onComplete: () => p.destroy()
                               });
@@ -2032,11 +2035,11 @@
                               targets: puyo,
                               x: puyo.x + Math.cos(angle) * distance,
                               y: puyo.y + Math.sin(angle) * distance,
-                              angle: Phaser.Math.Between(-360, 360),
+                              angle: Phaser.Math.Between(-720, 720),
                               alpha: 0,
                               scale: 0,
-                              duration: 800 + Math.random() * 400,
-                              delay: (row + col) * 20,
+                              duration: 1500 + Math.random() * 500, // 時間延長
+                              delay: (row + col) * 10,
                               ease: 'Power2',
                               onComplete: () => {
                                   if (puyo && puyo.scene) puyo.destroy();
@@ -2046,9 +2049,8 @@
                   }
               }
 
-              // プレイヤー名を赤くフェードアウト
+              // プレイヤー名をフェードアウト
               if (field.name) {
-                  field.name.setColor('#ff0000');
                   this.tweens.add({
                       targets: field.name,
                       alpha: 0,
@@ -2191,24 +2193,11 @@
               this.defeatCountdownText.setVisible(false);
 
               if (isWinner) {
-                  this.showMessage('🏆 勝利！ 🏆');
+                  this.showMessage('YOU WIN!');
               } else {
                   // 負けた場合は自分のフィールドを崩壊
                   this.collapseMyField();
-                  this.showMessage('敗北...');
-                  
-                  // 観戦メッセージ
-                   this.waitingText = this.add.text(
-                        this.cameras.main.centerX,
-                        this.cameras.main.centerY + 100,
-                        '観戦中...',
-                        {
-                            fontSize: '24px',
-                            fontFamily: '"JetBrains Mono"',
-                            fill: '#aaa',
-                            fontStyle: 'bold'
-                        }
-                   ).setOrigin(0.5);
+                  this.showMessage('YOU LOSE...');
               }
               
               // 試合終了（勝者決定）後は全員ロビーへ
@@ -2233,7 +2222,8 @@
               }
               
               // 画面振動
-              this.cameras.main.shake(500, 0.02);
+    // 画面振動 (大)
+    this.cameras.main.shake(800, 0.03);
 
               // 背景とグラデーションを崩壊
               this.children.list.forEach(child => {

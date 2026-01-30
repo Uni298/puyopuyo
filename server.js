@@ -68,6 +68,78 @@ function handleMessage(ws, data) {
     case "send_garbage":
       sendGarbage(ws, data);
       break;
+    case "piece_update":
+      if (ws.roomCode) {
+        const room = rooms.get(ws.roomCode);
+        if (room) {
+          room.players.forEach((player) => {
+            if (player.playerId !== ws.playerId) {
+              player.send(
+                JSON.stringify({
+                  type: "piece_update",
+                  playerId: ws.playerId,
+                  data: data.data,
+                }),
+              );
+            }
+          });
+        }
+      }
+      break;
+    case "hard_drop_animation":
+      if (ws.roomCode) {
+        const room = rooms.get(ws.roomCode);
+        if (room) {
+          room.players.forEach((player) => {
+            if (player.playerId !== ws.playerId) {
+              player.send(
+                JSON.stringify({
+                  type: "hard_drop_animation",
+                  playerId: ws.playerId,
+                  data: data.data,
+                }),
+              );
+            }
+          });
+        }
+      }
+      break;
+    case "clear_animation":
+      if (ws.roomCode) {
+        const room = rooms.get(ws.roomCode);
+        if (room) {
+          room.players.forEach((player) => {
+            if (player.playerId !== ws.playerId) {
+              player.send(
+                JSON.stringify({
+                  type: "clear_animation",
+                  playerId: ws.playerId,
+                  data: data.data,
+                }),
+              );
+            }
+          });
+        }
+      }
+      break;
+    case "chat_message":
+      if (ws.roomCode) {
+        const room = rooms.get(ws.roomCode);
+        if (room) {
+          const playerState = room.playerStates.get(ws.playerId);
+          const playerName = playerState ? playerState.name : "Unknown";
+          room.players.forEach((player) => {
+            player.send(
+              JSON.stringify({
+                type: "chat_message",
+                playerName: playerName,
+                message: data.message,
+              }),
+            );
+          });
+        }
+      }
+      break;
     case "update_settings":
       updateSettings(ws, data);
       break;
@@ -321,6 +393,7 @@ function sendGarbage(ws, data) {
   const targetPlayer = room.players.find((p) => p.playerId === targetId);
 
   if (targetPlayer) {
+    // ターゲットに送信
     targetPlayer.send(
       JSON.stringify({
         type: "receive_garbage",
@@ -330,6 +403,21 @@ function sendGarbage(ws, data) {
         sourcePositions: data.positions,
       }),
     );
+    
+    // 全プレイヤーに攻撃情報をブロードキャスト（第三者攻撃の可視化）
+    room.players.forEach((player) => {
+      if (player.playerId !== ws.playerId && player.playerId !== targetId) {
+        player.send(
+          JSON.stringify({
+            type: "third_party_attack",
+            fromPlayerId: ws.playerId,
+            toPlayerId: targetId,
+            amount: data.amount,
+            sourcePositions: data.positions,
+          }),
+        );
+      }
+    });
   }
 }
 

@@ -241,6 +241,16 @@
         </button>
         <br />
         <button class="btn" onclick="leaveRoom()">退出</button>
+        
+        <!-- チャット -->
+        <div style="margin-top: 20px; background: rgba(255,255,255,0.1); padding: 15px; border-radius: 10px;">
+          <h3 style="margin: 0 0 10px 0; font-size: 16px;">Chat</h3>
+          <div id="chatMessages" style="height: 150px; overflow-y: auto; background: rgba(0,0,0,0.3); border-radius: 5px; padding: 10px; margin-bottom: 10px; font-size: 13px;"></div>
+          <div style="display: flex; gap: 5px;">
+            <input type="text" id="chatInput" placeholder="メッセージを入力..." style="flex: 1; padding: 8px; border: 1px solid #555; border-radius: 5px; font-size: 13px; background: rgba(255,255,255,0.9);" maxlength="100">
+            <button onclick="sendChat()" style="padding: 8px 15px; background: #3498db; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 13px;">送信</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -431,8 +441,68 @@
                       game.scene.scenes[0].updateOpponentPiece(data.playerId, data.data);
                   }
                   break;
+
+              case 'third_party_attack':
+                  if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
+                      game.scene.scenes[0].showThirdPartyAttack(data.fromPlayerId, data.toPlayerId, data.amount, data.sourcePositions);
+                  }
+                  break;
+
+              case 'hard_drop_animation':
+                  if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
+                      game.scene.scenes[0].showOpponentHardDrop(data.playerId, data.data);
+                  }
+                  break;
+
+              case 'clear_animation':
+                  if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
+                      game.scene.scenes[0].showOpponentClear(data.playerId, data.data);
+                  }
+                  break;
+
+              case 'chat_message':
+                  const chatMessages = document.getElementById('chatMessages');
+                  if (chatMessages) {
+                      const msgDiv = document.createElement('div');
+                      msgDiv.style.marginBottom = '5px';
+                      msgDiv.style.wordWrap = 'break-word';
+                      msgDiv.innerHTML = `<strong>${data.playerName}:</strong> ${escapeHtml(data.message)}`;
+                      chatMessages.appendChild(msgDiv);
+                      chatMessages.scrollTop = chatMessages.scrollHeight;
+                  }
+                  break;
           }
       }
+      
+      function escapeHtml(text) {
+          const div = document.createElement('div');
+          div.textContent = text;
+          return div.innerHTML;
+      }
+      
+      function sendChat() {
+          const input = document.getElementById('chatInput');
+          const message = input.value.trim();
+          if (message && ws && ws.readyState === WebSocket.OPEN && currentRoom) {
+              ws.send(JSON.stringify({
+                  type: 'chat_message',
+                  message: message
+              }));
+              input.value = '';
+          }
+      }
+      
+      // Enterキーでチャット送信
+      document.addEventListener('DOMContentLoaded', () => {
+          const chatInput = document.getElementById('chatInput');
+          if (chatInput) {
+              chatInput.addEventListener('keypress', (e) => {
+                  if (e.key === 'Enter') {
+                      sendChat();
+                  }
+              });
+          }
+      });
 
       function createRoom() {
           if (ws && ws.readyState === WebSocket.OPEN) {
@@ -529,10 +599,10 @@
               this.gameOver = false;
               this.isMoving = false;
               this.chainCount = 0;
-              this.pendingGarbage = [];
+              this.comboCount = 0;  // 新規: コンボカウンター
+              this.pendingGarbageCount = 0;  // 変更: 配列から数値へ
               this.gameStarted = false;
               this.players = [];
-              this.alivePlayers = [];
               this.alivePlayers = [];
               this.defeatTimer = null;
               this.defeatCountdownText = null;
@@ -693,7 +763,48 @@
                   fontFamily: '"JetBrains Mono"',
                   fill: '#ffcc00',
                   fontStyle: 'bold'
-              }).setOrigin(0.5);
+              }).setOrigin(0.5).setDepth(100);
+
+              // コンボ表示
+              this.comboText = this.add.text(offsetX + COLS * CELL_SIZE / 2, ROWS * CELL_SIZE / 2 + 40, '', {
+                  fontSize: '20px',
+                  fontFamily: '"JetBrains Mono"',
+                  fill: '#ff6b6b',
+                  fontStyle: 'bold'
+              }).setOrigin(0.5).setDepth(100);
+
+              // 予告ゲージ背景
+              this.garbageGaugeBg = this.add.rectangle(
+                  offsetX + COLS * CELL_SIZE + 15,
+                  ROWS * CELL_SIZE / 2,
+                  20,
+                  ROWS * CELL_SIZE,
+                  0x333333,
+                  0.3
+              ).setOrigin(0, 0.5).setDepth(50);
+
+              // 予告ゲージ
+              this.garbageGauge = this.add.rectangle(
+                  offsetX + COLS * CELL_SIZE + 15,
+                  ROWS * CELL_SIZE / 2,
+                  20,
+                  0,
+                  0xff6b6b,
+                  0.8
+              ).setOrigin(0, 0.5).setDepth(51);
+
+              // 予告数値
+              this.garbageCountText = this.add.text(
+                  offsetX + COLS * CELL_SIZE + 25,
+                  ROWS * CELL_SIZE / 2 - ROWS * CELL_SIZE / 2 - 20,
+                  '',
+                  {
+                      fontSize: '16px',
+                      fontFamily: '"JetBrains Mono"',
+                      fill: '#ff6b6b',
+                      fontStyle: 'bold'
+                  }
+              ).setOrigin(0.5).setDepth(52);
 
               // Next表示 (左側に配置、少し下げる)
               this.add.text(offsetX - 100, 120, 'NEXT:', {
@@ -855,28 +966,36 @@
                    this.opponentFields.set(opponents[0].id, field);
                    
               } else {
-                  // 通常のBattle Royaleモード（右側に小さく一覧表示）
+                  // 通常のBattle Royaleモード（グリッドレイアウト）
                   const startX = 50 + COLS * CELL_SIZE + 80;
-                  const fieldWidth = COLS * CELL_SIZE * 0.5;
-                  const fieldHeight = ROWS * CELL_SIZE * 0.5;
-                  const spacing = 20;
+                  const fieldWidth = COLS * CELL_SIZE * 0.4;  // さらに小さく
+                  const fieldHeight = ROWS * CELL_SIZE * 0.4;
+                  const spacing = 15;
+                  
+                  // グリッドレイアウト（2列）
+                  const cols = 2;
+                  const maxVisibleRows = Math.floor((this.cameras.main.height - 100) / (fieldHeight + spacing + 30));
     
                   opponents.forEach((player, index) => {
-                      const x = startX;
-                      const y = index * (fieldHeight + spacing + 30);
+                      const col = index % cols;
+                      const row = Math.floor(index / cols);
+                      
+                      const x = startX + col * (fieldWidth + spacing + 20);
+                      const y = 50 + row * (fieldHeight + spacing + 30);
     
                       const field = {
                           x: x,
                           y: y,
                           width: fieldWidth,
                           height: fieldHeight,
-                          scale: 0.5,
+                          scale: 0.4,
                           grid: [],
                           border: null,
                           bg: null,
                           name: null,
                           playerId: player.id,
-                          originalProps: null
+                          originalProps: null,
+                          puyoSprites: []  // フルテクスチャ用
                       };
     
                       // グリッド初期化
@@ -913,7 +1032,7 @@
     
                       // プレイヤー名
                       field.name = this.add.text(x + fieldWidth / 2, y - 15, player.name, {
-                          fontSize: '14px',
+                          fontSize: '12px',
                           fontFamily: '"JetBrains Mono"',
                           fill: '#333',
                           fontStyle: 'bold'
@@ -938,16 +1057,61 @@
                   }
               }
 
-              // 新しいデータで描画
+              // 1v1モードまたはズーム中はフルテクスチャ、それ以外は円形
+              const useFullTexture = this.is1v1Mode || (this.zoomedPlayerId === playerId);
+
               // 新しいデータで描画
               for (let row = 0; row < ROWS; row++) {
                   for (let col = 0; col < COLS; col++) {
                       if (gridData[row][col]) {
-                          // 全フィールド共通で scale を考慮した座標計算を行う
                           const x = field.x + col * CELL_SIZE * field.scale + (CELL_SIZE * field.scale) / 2;
                           const y = field.y + row * CELL_SIZE * field.scale + (CELL_SIZE * field.scale) / 2;
-                          field.grid[row][col] = this.createSmallPuyo(x, y, gridData[row][col], field.scale);
-                          field.grid[row][col].setDepth(field.bg.depth + 1); // 背景のすぐ上
+                          
+                          let puyo;
+                          if (useFullTexture) {
+                              // 自分と同じフルテクスチャを使用
+                              const radius = CELL_SIZE * 0.38 * field.scale;
+                              const baseColor = COLOR_VALUES[gridData[row][col]];
+                              
+                              puyo = this.add.container(x, y);
+                              
+                              // 影
+                              const shadow = this.add.circle(2 * field.scale, 2 * field.scale, radius, 0x000000, 0.3);
+                              puyo.add(shadow);
+                              
+                              // 本体
+                              const body = this.add.circle(0, 0, radius, baseColor);
+                              puyo.add(body);
+                              
+                              // 暗い部分
+                              const darkPart = this.add.circle(0, radius * 0.2, radius * 0.9,
+                                  Phaser.Display.Color.IntegerToColor(baseColor).darken(15).color);
+                              puyo.add(darkPart);
+                              
+                              // ハイライト
+                              const highlight1 = this.add.circle(-radius * 0.3, -radius * 0.3, radius * 0.4, 0xffffff, 0.5);
+                              puyo.add(highlight1);
+                              
+                              const highlight2 = this.add.circle(radius * 0.2, -radius * 0.35, radius * 0.2, 0xffffff, 0.3);
+                              puyo.add(highlight2);
+                              
+                              // 枠線
+                              const outline = this.add.circle(0, 0, radius);
+                              outline.setStrokeStyle(2 * field.scale, 0xffffff, 0.8);
+                              outline.setFillStyle(0, 0);
+                              puyo.add(outline);
+                              
+                              puyo.setSize(CELL_SIZE * field.scale, CELL_SIZE * field.scale);
+                          } else {
+                              // 簡易版（円のみ）
+                              puyo = this.add.circle(x, y, CELL_SIZE * 0.38 * field.scale, COLOR_VALUES[gridData[row][col]]);
+                              puyo.setStrokeStyle(2 * field.scale, 0xffffff, 0.8);
+                          }
+                          
+                          puyo.setData('color', gridData[row][col]);
+                          puyo.setDepth(field.bg.depth + 1);
+                          
+                          field.grid[row][col] = puyo;
                       }
                   }
               }
@@ -1054,6 +1218,15 @@
                           puyo.setDepth(field.bg.depth + 1);
                       }
                   }
+              }
+              
+              // 操作中ピースの位置も更新
+              if (field.pieceContainer) {
+                  field.pieceContainer.list.forEach(piece => {
+                      // ピースは既にupdateOpponentPieceで正しい座標に配置されているが、
+                      // スケールやDepthを更新する必要がある
+                      piece.setDepth(field.bg.depth + 10);
+                  });
               }
           }
 
@@ -1345,6 +1518,30 @@
 
               const distance = dropRow - this.currentPair.row;
               if (distance > 0) {
+                  // トレイルエフェクト追加
+                  const startY = this.currentPair.row * CELL_SIZE + CELL_SIZE / 2;
+                  const endY = dropRow * CELL_SIZE + CELL_SIZE / 2;
+                  
+                  // メインぷよのトレイル
+                  const mainX = this.fieldOffsetX + this.currentPair.col * CELL_SIZE + CELL_SIZE / 2;
+                  for (let i = 0; i < 5; i++) {
+                      const trail = this.add.circle(
+                          mainX,
+                          startY + (endY - startY) * (i / 5),
+                          CELL_SIZE * 0.3,
+                          COLOR_VALUES[this.currentPair.main.color],
+                          0.3 - i * 0.05
+                      );
+                      trail.setDepth(50);
+                      this.tweens.add({
+                          targets: trail,
+                          alpha: 0,
+                          duration: 200,
+                          delay: i * 20,
+                          onComplete: () => trail.destroy()
+                      });
+                  }
+                  
                   this.currentPair.row = dropRow;
 
                   const positions = this.getPairPositions(
@@ -1371,6 +1568,19 @@
                           this.lockPair();
                       }
                   });
+                  
+                  // ハードドロップアニメーションを他のプレイヤーに送信
+                  if (ws && ws.readyState === WebSocket.OPEN) {
+                      ws.send(JSON.stringify({
+                          type: 'hard_drop_animation',
+                          data: {
+                              col: this.currentPair.col,
+                              startRow: this.currentPair.row - distance,
+                              endRow: dropRow,
+                              color: this.currentPair.main.color
+                          }
+                      }));
+                  }
               }
 
               // フィールド全体をバウンドさせるアニメーション
@@ -1503,12 +1713,13 @@
 
               this.currentPair = null;
 
-              this.chainCount = 0;
+              this.chainCount = 0;  // チェインはリセット
+              // コンボはリセットしない（消えなかったらリセット）
               await this.checkAndClearMatches();
               await this.applyGravity();
 
               // おじゃまぷよの処理
-              if (this.pendingGarbage.length > 0) {
+              if (this.pendingGarbageCount > 0) {
                   this.time.delayedCall(200, () => {
                       this.dropGarbagePuyos();
                   });
@@ -1532,13 +1743,30 @@
                   if (matched.length === 0) {
                       hasMatches = false;
                       this.chainText.setText('');
+                      // 消えなかったのでコンボリセット
+                      this.comboCount = 0;
+                      this.comboText.setText('');
                   } else {
+                      // コンボカウント増加
+                      this.comboCount++;
+                      
                       this.chainCount++;
                       if (this.chainCount > 1) {
                           this.chainText.setText(`${this.chainCount} 連鎖！`);
                           this.tweens.add({
                               targets: this.chainText,
                               scale: 1.5,
+                              yoyo: true,
+                              duration: 200
+                          });
+                      }
+                      
+                      // コンボ表示
+                      if (this.comboCount > 1) {
+                          this.comboText.setText(`${this.comboCount} COMBO!`);
+                          this.tweens.add({
+                              targets: this.comboText,
+                              scale: 1.3,
                               yoyo: true,
                               duration: 200
                           });
@@ -1552,13 +1780,29 @@
                       await this.clearPuyos(matched);
 
                       this.score += matched.length * 10 * this.chainCount;
-                      this.scoreText.setText(`スコア: ${this.score}`);
+                      this.scoreText.setText(`SCORE: ${this.score}`);
 
-                      this.scoreText.setText(`スコア: ${this.score}`);
-
-                      const garbageAmount = Math.floor((matched.length / 2) * this.garbageRate);
-                      if (garbageAmount > 0) {
-                          this.sendGarbage(garbageAmount, positions);
+                      // おじゃまぷよ計算（チェイン + コンボ）
+                      const baseGarbage = Math.floor((matched.length / 2) * this.garbageRate);
+                      const comboBonus = this.comboCount - 1;  // 1コンボごとに+1
+                      const totalGarbage = baseGarbage + comboBonus;
+                      
+                      if (totalGarbage > 0) {
+                          // 相殺処理
+                          if (this.pendingGarbageCount > 0) {
+                              const offset = Math.min(totalGarbage, this.pendingGarbageCount);
+                              this.pendingGarbageCount -= offset;
+                              const remaining = totalGarbage - offset;
+                              
+                              if (remaining > 0) {
+                                  this.sendGarbage(remaining, positions);
+                              }
+                          } else {
+                              this.sendGarbage(totalGarbage, positions);
+                          }
+                          
+                          // 予告ゲージ更新
+                          this.updateGarbageGauge();
                       }
 
                       await this.applyGravity();
@@ -1740,6 +1984,19 @@
                                       }
                                   } catch (e) {}
                               });
+                              
+                              // 削除アニメーションを他のプレイヤーに送信
+                              if (ws && ws.readyState === WebSocket.OPEN) {
+                                  const positions = uniqueMatches.map(m => ({ row: m.row, col: m.col }));
+                                  ws.send(JSON.stringify({
+                                      type: 'clear_animation',
+                                      data: {
+                                          positions: positions,
+                                          chainCount: this.chainCount
+                                      }
+                                  }));
+                              }
+                              
                               resolve();
                           }
                       });
@@ -1787,6 +2044,22 @@
               return new Promise(resolve => this.time.delayedCall(ms, resolve));
           }
 
+          updateGarbageGauge() {
+              // 予告ゲージの高さを更新
+              const maxGarbage = 30;  // 最大表示数
+              const ratio = Math.min(this.pendingGarbageCount / maxGarbage, 1);
+              const gaugeHeight = ROWS * CELL_SIZE * ratio;
+              
+              this.garbageGauge.setSize(20, gaugeHeight);
+              
+              // 数値表示
+              if (this.pendingGarbageCount > 0) {
+                  this.garbageCountText.setText(`${this.pendingGarbageCount}`);
+              } else {
+                  this.garbageCountText.setText('');
+              }
+          }
+
           sendFieldUpdate() {
               if (ws && ws.readyState === WebSocket.OPEN) {
                   const gridData = [];
@@ -1812,9 +2085,32 @@
               if (ws && ws.readyState === WebSocket.OPEN) {
                   const colors = [];
                   for (let i = 0; i < amount; i++) {
-                      // 送るのは全ておじゃまぷよ(gray)
                       colors.push('gray');
                   }
+
+                  // 自分の攻撃が相手に飛んでいくアニメーション
+                  sourcePositions.slice(0, amount).forEach((pos, i) => {
+                      const startX = pos.x;
+                      const startY = pos.y;
+                      
+                      const particle = this.add.circle(startX, startY, CELL_SIZE * 0.25, 0x888888, 0.9);
+                      particle.setDepth(200);
+
+                      const targetX = Phaser.Math.Between(0, this.cameras.main.width);
+                      const targetY = -100;
+
+                      this.tweens.add({
+                          targets: particle,
+                          x: targetX,
+                          y: targetY,
+                          scale: 0.5,
+                          alpha: 0,
+                          duration: 800,
+                          delay: i * 30,
+                          ease: 'Power2',
+                          onComplete: () => particle.destroy()
+                      });
+                  });
 
                   ws.send(JSON.stringify({
                       type: 'send_garbage',
@@ -1831,24 +2127,14 @@
               if (!sourceField) return;
 
               // おじゃまぷよをキューに追加
-              for (let i = 0; i < amount; i++) {
-                  this.pendingGarbage.push(colors[i]);
-              }
+              this.pendingGarbageCount += amount;
+              this.updateGarbageGauge();
 
               // 攻撃元から自分のフィールドへ飛んでくるアニメーション
               sourcePositions.slice(0, amount).forEach((pos, i) => {
                   // 相手フィールドのスケール調整された位置から飛ばす
                   const sourceX = sourceField.x + sourceField.width / 2;
                   const sourceY = sourceField.y + sourceField.height / 2;
-
-                  if (this.is1v1Mode) {
-                       // 1v1の場合、sourceField.xは左上、sourceField.widthは通常サイズ
-                       // なので上記計算でOK? createOpponentFieldsの実装では
-                       // centerX = opponentX + COLS * CELL_SIZE / 2 なので
-                       // 0.5倍スケールの場合と1.0倍スケールの場合で中心位置の計算が合うか確認
-                       // createOpponentFieldsの1v1: x = opponentX (左端)
-                       // createOpponentFieldsの通常: x = 左端
-                  }
 
                   const particle = this.add.circle(sourceX, sourceY, CELL_SIZE * 0.25, 0x888888, 0.9);
                   particle.setDepth(200);
@@ -1873,13 +2159,137 @@
               });
           }
 
+          showThirdPartyAttack(fromPlayerId, toPlayerId, amount, sourcePositions) {
+              const fromField = this.opponentFields.get(fromPlayerId);
+              const toField = this.opponentFields.get(toPlayerId);
+              
+              if (!fromField || !toField) return;
+              
+              sourcePositions.slice(0, Math.min(amount, 10)).forEach((pos, i) => {
+                  const sourceX = fromField.x + fromField.width / 2;
+                  const sourceY = fromField.y + fromField.height / 2;
+                  
+                  const targetX = toField.x + toField.width / 2;
+                  const targetY = toField.y + toField.height / 2;
+                  
+                  const particle = this.add.circle(sourceX, sourceY, CELL_SIZE * 0.2, 0x888888, 0.7);
+                  particle.setDepth(200);
+                  
+                  this.tweens.add({
+                      targets: particle,
+                      x: targetX,
+                      y: targetY,
+                      scale: 0.5,
+                      alpha: 0,
+                      duration: 500,
+                      delay: i * 30,
+                      ease: 'Power2',
+                      onComplete: () => particle.destroy()
+                  });
+              });
+          }
+          
+          showOpponentHardDrop(playerId, data) {
+              const field = this.opponentFields.get(playerId);
+              if (!field) return;
+              
+              const startY = field.y + data.startRow * CELL_SIZE * field.scale + (CELL_SIZE * field.scale) / 2;
+              const endY = field.y + data.endRow * CELL_SIZE * field.scale + (CELL_SIZE * field.scale) / 2;
+              const x = field.x + data.col * CELL_SIZE * field.scale + (CELL_SIZE * field.scale) / 2;
+              
+              for (let i = 0; i < 5; i++) {
+                  const trail = this.add.circle(
+                      x,
+                      startY + (endY - startY) * (i / 5),
+                      CELL_SIZE * 0.3 * field.scale,
+                      COLOR_VALUES[data.color],
+                      0.3 - i * 0.05
+                  );
+                  trail.setDepth(field.bg.depth + 50);
+                  this.tweens.add({
+                      targets: trail,
+                      alpha: 0,
+                      duration: 200,
+                      delay: i * 20,
+                      onComplete: () => trail.destroy()
+                  });
+              }
+          }
+          
+          showOpponentClear(playerId, data) {
+              const field = this.opponentFields.get(playerId);
+              if (!field) return;
+              
+              // アニメーション用のスプライトを保存
+              const spritesToAnimate = [];
+              
+              data.positions.forEach((pos) => {
+                  const puyo = field.grid[pos.row] && field.grid[pos.row][pos.col];
+                  if (!puyo) return;
+                  
+                  const color = puyo.getData('color');
+                  const x = puyo.x;
+                  const y = puyo.y;
+                  
+                  // グリッドから即座に削除（遅延を減らす）
+                  field.grid[pos.row][pos.col] = null;
+                  
+                  // アニメーション用に保存
+                  spritesToAnimate.push({ puyo, color, x, y });
+              });
+              
+              // アニメーション実行
+              spritesToAnimate.forEach(({ puyo, color, x, y }) => {
+                  for (let i = 0; i < 8; i++) {
+                      const angle = (i / 8) * Math.PI * 2;
+                      const distance = (40 + Math.random() * 20) * field.scale;
+                      
+                      const particle = this.add.circle(x, y, 6 * field.scale, COLOR_VALUES[color]);
+                      particle.setDepth(field.bg.depth + 100);
+                      this.tweens.add({
+                          targets: particle,
+                          x: x + Math.cos(angle) * distance,
+                          y: y + Math.sin(angle) * distance,
+                          alpha: 0,
+                          scale: 0.2,
+                          duration: 500 + Math.random() * 200,
+                          ease: 'Power2',
+                          onComplete: () => particle.destroy()
+                      });
+                  }
+                  
+                  const ring = this.add.circle(x, y, 10 * field.scale, 0xffffff, 0.8);
+                  ring.setDepth(field.bg.depth + 100);
+                  this.tweens.add({
+                      targets: ring,
+                      radius: 40 * field.scale,
+                      alpha: 0,
+                      duration: 400,
+                      onComplete: () => ring.destroy()
+                  });
+                  
+                  // ぷよ本体をアニメーションで消す
+                  this.tweens.add({
+                      targets: puyo,
+                      scale: 0,
+                      alpha: 0,
+                      duration: 400,
+                      ease: 'Back.easeIn',
+                      onComplete: () => {
+                          if (puyo && puyo.scene) puyo.destroy();
+                      }
+                  });
+              });
+          }
+
           async dropGarbagePuyos() {
-              if (this.pendingGarbage.length === 0) return;
+              if (this.pendingGarbageCount === 0) return;
 
-              const garbageToDrop = [...this.pendingGarbage];
-              this.pendingGarbage = [];
+              const garbageToDrop = this.pendingGarbageCount;
+              this.pendingGarbageCount = 0;
+              this.updateGarbageGauge();
 
-              for (const color of garbageToDrop) {
+              for (let i = 0; i < garbageToDrop; i++) {
                   const col = Phaser.Math.Between(0, COLS - 1);
                   const startY = -CELL_SIZE;
                   const x = this.fieldOffsetX + col * CELL_SIZE + CELL_SIZE / 2;
@@ -1892,7 +2302,7 @@
                       }
                   }
 
-                  const puyo = this.createPuyo(x, startY, color);
+                  const puyo = this.createPuyo(x, startY, 'gray');  // 常にgray
                   this.grid[targetRow][col] = puyo;
 
                   this.tweens.add({
@@ -1971,16 +2381,40 @@
           }
 
           collapseField(field) {
-              // 枠の崩壊アニメーション
+              // 枠の破裂アニメーション
               if (field.border) {
+                  // 枠を複数の破片に見立てて破裂させる
+                  for (let i = 0; i < 12; i++) {
+                      const angle = (i / 12) * Math.PI * 2;
+                      const dist = 100 + Math.random() * 100;
+                      
+                      const fragment = this.add.rectangle(
+                          field.x + field.width / 2, 
+                          field.y + field.height / 2, 
+                          20, 4, 0x2c3e50
+                      );
+                      fragment.setDepth(1500);
+                      fragment.setRotation(angle);
+
+                      this.tweens.add({
+                          targets: fragment,
+                          x: fragment.x + Math.cos(angle) * dist,
+                          y: fragment.y + Math.sin(angle) * dist,
+                          angle: Phaser.Math.Between(-360, 360),
+                          alpha: 0,
+                          scale: 2,
+                          duration: 1200,
+                          ease: 'Power2',
+                          onComplete: () => fragment.destroy()
+                      });
+                  }
+
                   this.tweens.add({
                       targets: field.border,
-                      angle: Phaser.Math.Between(-10, 10),
-                      scaleX: 0.9,
-                      scaleY: 1.1,
+                      scale: 1.5,
                       alpha: 0,
-                      duration: 800,
-                      ease: 'Power2',
+                      duration: 500,
+                      ease: 'Expo.easeOut',
                       onComplete: () => {
                           if (field.border) field.border.destroy();
                       }
@@ -1988,18 +2422,37 @@
               }
               
               // 画面振動 (大)
-              this.cameras.main.shake(800, 0.02);
+              this.cameras.main.shake(400, 0.02);
 
-              // 背景の崩壊
+              // 背景とグラデーションの崩壊
               if (field.bg) {
                   this.tweens.add({
                       targets: field.bg,
                       alpha: 0,
                       scaleY: 0,
-                      duration: 1500,
+                      duration: 1000,
                       ease: 'Power2',
                       onComplete: () => {
-                          if (field.bg) field.bg.destroy();
+                          if (field.bg) {
+                              field.bg.destroy();
+                              field.bg = null;
+                          }
+                      }
+                  });
+              }
+              
+              // グラデーション画像も破壊
+              if (field.gradient) {
+                  this.tweens.add({
+                      targets: field.gradient,
+                      alpha: 0,
+                      duration: 1000,
+                      ease: 'Power2',
+                      onComplete: () => {
+                          if (field.gradient) {
+                              field.gradient.destroy();
+                              field.gradient = null;
+                          }
                       }
                   });
               }
@@ -2092,6 +2545,20 @@
                this.scoreText.setPosition(newFieldX, ROWS * CELL_SIZE + 20);
                this.chainText.setPosition(newFieldX + COLS * CELL_SIZE / 2, ROWS * CELL_SIZE / 2);
                this.nextContainer.setPosition(newFieldX + 30, 50);
+     
+     // 予告ゲージの位置更新
+     if (this.garbageGaugeBg) {
+         this.garbageGaugeBg.setPosition(newFieldX + COLS * CELL_SIZE + 15, ROWS * CELL_SIZE / 2);
+     }
+     if (this.garbageGauge) {
+         this.garbageGauge.setPosition(newFieldX + COLS * CELL_SIZE + 15, ROWS * CELL_SIZE / 2);
+     }
+     if (this.garbageCountText) {
+         this.garbageCountText.setPosition(newFieldX + COLS * CELL_SIZE + 25, ROWS * CELL_SIZE / 2 - ROWS * CELL_SIZE / 2 - 20);
+     }
+     if (this.comboText) {
+         this.comboText.setPosition(newFieldX + COLS * CELL_SIZE / 2, ROWS * CELL_SIZE / 2 + 40);
+     }
                if (this.defeatCountdownText) {
                     this.defeatCountdownText.setPosition(
                         newFieldX + COLS * CELL_SIZE / 2,
@@ -2154,9 +2621,6 @@
           }
 
           updateOpponentPiece(playerId, data) {
-              // 1v1モード以外では表示しない (リクエスト対応)
-              if (!this.is1v1Mode) return;
-              
               const field = this.opponentFields.get(playerId);
               if (!field) return;
               
@@ -2167,18 +2631,17 @@
               field.pieceContainer.removeAll(true);
               
               // 相手フィールド上の座標計算
-              // data: col, row (grid coord), rotation
               const positions = this.getPairPositions(data.col, data.row, data.rotation);
               
-              // 描画 (半透明で表示)
+              // 描画 (半透明で表示、スケール対応)
               const drawPiece = (pos, color) => {
                   if (pos.row < 0) return; // 画面外
-                  // 1v1なのでscale 1.0前提
-                  const x = field.x + pos.col * CELL_SIZE + CELL_SIZE/2;
-                  const y = field.y + pos.row * CELL_SIZE + CELL_SIZE/2;
+                  const x = field.x + pos.col * CELL_SIZE * field.scale + (CELL_SIZE * field.scale) / 2;
+                  const y = field.y + pos.row * CELL_SIZE * field.scale + (CELL_SIZE * field.scale) / 2;
                   
-                  const puyo = this.add.circle(x, y, CELL_SIZE * 0.38, COLOR_VALUES[color], 0.6);
-                  puyo.setStrokeStyle(2, 0xffffff, 0.5);
+                  const puyo = this.add.circle(x, y, CELL_SIZE * 0.38 * field.scale, COLOR_VALUES[color], 0.6);
+                  puyo.setStrokeStyle(2 * field.scale, 0xffffff, 0.5);
+                  puyo.setDepth(field.bg.depth + 10);
                   field.pieceContainer.add(puyo);
               };
               
@@ -2223,7 +2686,7 @@
               
               // 画面振動
     // 画面振動 (大)
-    this.cameras.main.shake(800, 0.03);
+    this.cameras.main.shake(400, 0.03);
 
               // 背景とグラデーションを崩壊
               this.children.list.forEach(child => {

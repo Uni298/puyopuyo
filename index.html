@@ -621,9 +621,11 @@
               this.players = [];
               this.alivePlayers = [];
               this.defeatTimer = null;
+              this.defeatTimer = null;
               this.defeatCountdownText = null;
               this.is1v1Mode = false;
               this.garbageRate = 1.0;
+              this.isBoardAnimating = false; // 盤面アニメーション中フラグ
           }
 
           preload() {
@@ -711,6 +713,7 @@
               this.score = 0;
               this.gameOver = false;
               this.isMoving = false;
+              this.isBoardAnimating = false;
               this.chainCount = 0;
               this.pendingGarbageCount = 0;
               this.garbageQueue = [];
@@ -790,25 +793,25 @@
                   fontStyle: 'bold'
               }).setOrigin(0.5).setDepth(100);
 
-              // 予告ゲージ背景
+              // 予告ゲージ背景 (下寄せ)
               this.garbageGaugeBg = this.add.rectangle(
                   offsetX + COLS * CELL_SIZE + 15,
-                  ROWS * CELL_SIZE / 2,
+                  ROWS * CELL_SIZE,
                   20,
                   ROWS * CELL_SIZE,
                   0x333333,
                   0.3
-              ).setOrigin(0, 0.5).setDepth(50);
+              ).setOrigin(0, 1).setDepth(50);
 
-              // 予告ゲージ
+              // 予告ゲージ (下寄せ)
               this.garbageGauge = this.add.rectangle(
                   offsetX + COLS * CELL_SIZE + 15,
-                  ROWS * CELL_SIZE / 2,
+                  ROWS * CELL_SIZE,
                   20,
                   0,
                   0xff6b6b,
                   0.8
-              ).setOrigin(0, 0.5).setDepth(51);
+              ).setOrigin(0, 1).setDepth(51);
 
               // 予告数値
               this.garbageCountText = this.add.text(
@@ -823,15 +826,15 @@
                   }
               ).setOrigin(0.5).setDepth(52);
 
-              // Next表示 (右側に配置)
-              const nextX = offsetX + COLS * CELL_SIZE + 50;
-              this.add.text(nextX, 40, 'NEXT', {
-                  fontSize: '18px',
+              // Next表示 (左横、枠の下の方)
+              const nextX = offsetX - 70;
+              const nextY = ROWS * CELL_SIZE - 50;
+              this.add.text(nextX, nextY - 40, 'NEXT:', {
+                  fontSize: '16px',
                   fontFamily: '"JetBrains Mono"',
-                  fill: '#333',
-                  fontStyle: 'bold'
+                  fill: '#333'
               }).setOrigin(0.5);
-              this.nextContainer = this.add.container(nextX, 90);
+              this.nextContainer = this.add.container(nextX, nextY);
 
               // ゲーム開始
               this.nextPair = this.createPuyoPair();
@@ -1709,6 +1712,11 @@
               }
               this.isOnGround = false;
 
+              // 連鎖アニメーション中などは待機
+              if (this.isBoardAnimating) {
+                  await this.waitForBoardStability();
+              }
+
               if (this.currentPair.ghostMain) {
                   this.currentPair.ghostMain.destroy();
                   this.currentPair.ghostMain = null;
@@ -1738,8 +1746,25 @@
 
               this.currentPair = null;
 
+              // 次の操作を許可（非同期処理開始）
+              this.processBoardMatches(); // バックグラウンドで連鎖処理
+              
+              this.isMoving = false;
+              this.spawnNewPair();
+          }
+
+          async waitForBoardStability() {
+              while (this.isBoardAnimating) {
+                  await this.delay(50);
+              }
+          }
+
+          async processBoardMatches() {
+              this.isBoardAnimating = true;
+
               this.chainCount = 0;  // チェインはリセット
               // コンボはリセットしない（消えなかったらリセット）
+              
               await this.checkAndClearMatches();
               await this.applyGravity();
 
@@ -1757,15 +1782,15 @@
 
               // おじゃまぷよの処理
               if (this.pendingGarbageCount > 0) {
+                  // 少し遅らせておじゃまぷよの落下演出
                   this.time.delayedCall(200, () => {
-                      this.dropGarbagePuyos();
+                      this.dropGarbagePuyos(); // これも非同期かも？一旦ここで呼び出し
                   });
               }
 
               this.sendFieldUpdate();
-
-              this.isMoving = false;
-              this.spawnNewPair();
+              
+              this.isBoardAnimating = false;
           }
 
           async checkAndClearMatches() {
@@ -2207,7 +2232,7 @@
               const sourceField = this.opponentFields.get(fromPlayerId);
               if (!sourceField) return;
 
-              // おじゃまぷよをキューに追加 (3秒後に有効化)
+              // おじゃまぷよをキューに追加 (4秒後に有効化)
               this.garbageQueue.push({
                   amount: amount,
                   time: this.time.now + 3000

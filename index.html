@@ -1435,12 +1435,12 @@
                   this.lastMoveTime = time;
               }
 
-              if (Phaser.Input.Keyboard.JustDown(this.spaceKey) && time > this.lastRotateTime + 200) {
+              if (Phaser.Input.Keyboard.JustDown(this.cursors.up) && time > this.lastRotateTime + 200) {
                   this.rotatePair();
                   this.lastRotateTime = time;
               }
 
-              if (Phaser.Input.Keyboard.JustDown(this.cursors.down)) {
+              if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
                   this.hardDrop();
               }
 

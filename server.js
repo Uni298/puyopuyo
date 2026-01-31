@@ -181,11 +181,12 @@ function createRoom(ws, data) {
     },
   };
 
+  const playerName = data.playerName || `Player 1`;
   room.playerStates.set(ws.playerId, {
     id: ws.playerId,
     ready: false,
     alive: true,
-    name: `Player ${room.players.length}`,
+    name: playerName,
   });
 
   rooms.set(roomCode, room);
@@ -229,11 +230,12 @@ function joinRoom(ws, data) {
   }
 
   room.players.push(ws);
+  const playerName = data.playerName || `Player ${room.players.length}`;
   room.playerStates.set(ws.playerId, {
     id: ws.playerId,
     ready: false,
     alive: true,
-    name: `Player ${room.players.length}`,
+    name: playerName,
   });
 
   ws.roomCode = data.roomCode;

@@ -616,6 +616,7 @@
               this.comboCount = 0;  // コンボカウンター
               this.lastPlacementCleared = false;  // 前回の設置で消えたかどうか
               this.pendingGarbageCount = 0;  // 変更: 配列から数値へ
+              this.garbageQueue = []; // { amount: number, time: number }
               this.gameStarted = false;
               this.players = [];
               this.alivePlayers = [];
@@ -711,7 +712,8 @@
               this.gameOver = false;
               this.isMoving = false;
               this.chainCount = 0;
-              this.pendingGarbage = [];
+              this.pendingGarbageCount = 0;
+              this.garbageQueue = [];
               if (this.defeatTimer) {
                   this.defeatTimer.remove();
                   this.defeatTimer = null;
@@ -821,13 +823,15 @@
                   }
               ).setOrigin(0.5).setDepth(52);
 
-              // Next表示 (左側に配置、少し下げる)
-              this.add.text(offsetX - 100, 120, 'NEXT:', {
-                  fontSize: '16px',
+              // Next表示 (右側に配置)
+              const nextX = offsetX + COLS * CELL_SIZE + 50;
+              this.add.text(nextX, 40, 'NEXT', {
+                  fontSize: '18px',
                   fontFamily: '"JetBrains Mono"',
-                  fill: '#333'
-              });
-              this.nextContainer = this.add.container(offsetX - 70, 150);
+                  fill: '#333',
+                  fontStyle: 'bold'
+              }).setOrigin(0.5);
+              this.nextContainer = this.add.container(nextX, 90);
 
               // ゲーム開始
               this.nextPair = this.createPuyoPair();
@@ -1455,12 +1459,12 @@
                   this.lastMoveTime = time;
               }
 
-              if (Phaser.Input.Keyboard.JustDown(this.cursors.up) && time > this.lastRotateTime + 200) {
+              if (Phaser.Input.Keyboard.JustDown(this.cursors.up) && time > this.lastRotateTime + 50) {
                   this.rotatePair();
                   this.lastRotateTime = time;
               }
 
-              if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
+              if (Phaser.Input.Keyboard.JustDown(this.spaceKey) || Phaser.Input.Keyboard.JustDown(this.cursors.down)) {
                   this.hardDrop();
               }
 
@@ -1739,6 +1743,18 @@
               await this.checkAndClearMatches();
               await this.applyGravity();
 
+              // 待機キューから確定へ移動 (時間が経過したもの)
+              if (this.garbageQueue) {
+                  const now = this.time.now;
+                  // 逆順でループして安全に削除
+                  for (let i = this.garbageQueue.length - 1; i >= 0; i--) {
+                      if (now >= this.garbageQueue[i].time) {
+                          this.pendingGarbageCount += this.garbageQueue[i].amount;
+                          this.garbageQueue.splice(i, 1);
+                      }
+                  }
+              }
+
               // おじゃまぷよの処理
               if (this.pendingGarbageCount > 0) {
                   this.time.delayedCall(200, () => {
@@ -1824,16 +1840,40 @@
                       
                       if (totalGarbage > 0) {
                           // 相殺処理
+                          let remainingOffset = totalGarbage;
+                          
+                          // 1. 確定済みのおじゃまぷよから相殺
                           if (this.pendingGarbageCount > 0) {
-                              const offset = Math.min(totalGarbage, this.pendingGarbageCount);
+                              const offset = Math.min(remainingOffset, this.pendingGarbageCount);
                               this.pendingGarbageCount -= offset;
-                              const remaining = totalGarbage - offset;
+                              remainingOffset -= offset;
+                          }
+                          
+                          // 2. 待機キューのおじゃまぷよから相殺 (古い順)
+                          if (remainingOffset > 0 && this.garbageQueue && this.garbageQueue.length > 0) {
+                              // 時間順にソート（念のため）
+                              this.garbageQueue.sort((a, b) => a.time - b.time);
                               
-                              if (remaining > 0) {
-                                  this.sendGarbage(remaining, positions);
+                              for (let i = 0; i < this.garbageQueue.length; i++) {
+                                  if (remainingOffset <= 0) break;
+                                  
+                                  const item = this.garbageQueue[i];
+                                  if (item.amount <= remainingOffset) {
+                                      // まるごと相殺
+                                      remainingOffset -= item.amount;
+                                      this.garbageQueue.splice(i, 1);
+                                      i--; // インデックス調整
+                                  } else {
+                                      // 一部分相殺
+                                      item.amount -= remainingOffset;
+                                      remainingOffset = 0;
+                                  }
                               }
-                          } else {
-                              this.sendGarbage(totalGarbage, positions);
+                          }
+
+                          // 余った分を相手に送る
+                          if (remainingOffset > 0) {
+                              this.sendGarbage(remainingOffset, positions);
                           }
                           
                           // 予告ゲージ更新
@@ -2080,16 +2120,22 @@
           }
 
           updateGarbageGauge() {
+              // 全待機おじゃまぷよ数を計算
+              let totalGarbage = this.pendingGarbageCount;
+              if (this.garbageQueue) {
+                  totalGarbage += this.garbageQueue.reduce((sum, item) => sum + item.amount, 0);
+              }
+
               // 予告ゲージの高さを更新
               const maxGarbage = 30;  // 最大表示数
-              const ratio = Math.min(this.pendingGarbageCount / maxGarbage, 1);
+              const ratio = Math.min(totalGarbage / maxGarbage, 1);
               const gaugeHeight = ROWS * CELL_SIZE * ratio;
               
               this.garbageGauge.setSize(20, gaugeHeight);
               
               // 数値表示
-              if (this.pendingGarbageCount > 0) {
-                  this.garbageCountText.setText(`${this.pendingGarbageCount}`);
+              if (totalGarbage > 0) {
+                  this.garbageCountText.setText(`${totalGarbage}`);
               } else {
                   this.garbageCountText.setText('');
               }
@@ -2161,8 +2207,11 @@
               const sourceField = this.opponentFields.get(fromPlayerId);
               if (!sourceField) return;
 
-              // おじゃまぷよをキューに追加
-              this.pendingGarbageCount += amount;
+              // おじゃまぷよをキューに追加 (3秒後に有効化)
+              this.garbageQueue.push({
+                  amount: amount,
+                  time: this.time.now + 3000
+              });
               this.updateGarbageGauge();
 
               // 攻撃元から自分のフィールドへ飛んでくるアニメーション

@@ -202,6 +202,14 @@
       <h1>🎮 ぷよぷよ バトルロワイアル</h1>
 
       <div id="mainMenu">
+        <input
+          type="text"
+          id="playerNameInput"
+          placeholder="名前 (任意)"
+          maxlength="20"
+          style="padding: 16px; font-size: 16px; border-radius: 12px; border: 2px solid #e1e4e8; text-align: center; margin: 15px; width: 220px; background: #f8f9fa; color: #333;"
+        />
+        <br />
         <button class="btn" onclick="createRoom()">ルームを作成</button>
         <br />
         <input
@@ -506,16 +514,22 @@
 
       function createRoom() {
           if (ws && ws.readyState === WebSocket.OPEN) {
-              ws.send(JSON.stringify({ type: 'create_room' }));
+              const playerName = document.getElementById('playerNameInput').value.trim();
+              ws.send(JSON.stringify({ 
+                  type: 'create_room',
+                  playerName: playerName || undefined
+              }));
           }
       }
 
       function joinRoom() {
           const roomCode = document.getElementById('roomCodeInput').value.toUpperCase();
           if (roomCode.length === 6 && ws && ws.readyState === WebSocket.OPEN) {
+              const playerName = document.getElementById('playerNameInput').value.trim();
               ws.send(JSON.stringify({
                   type: 'join_room',
-                  roomCode: roomCode
+                  roomCode: roomCode,
+                  playerName: playerName || undefined
               }));
           } else {
               alert('6桁のルームコードを入力してください');
@@ -1110,7 +1124,9 @@
                           }
                           
                           puyo.setData('color', gridData[row][col]);
-                          puyo.setDepth(field.bg.depth + 1);
+                          if (field.bg) {
+                              puyo.setDepth(field.bg.depth + 1);
+                          }
                           
                           field.grid[row][col] = puyo;
                       }
@@ -1214,9 +1230,13 @@
                           const px = field.x + col * CELL_SIZE * field.scale + (CELL_SIZE * field.scale) / 2;
                           const py = field.y + row * CELL_SIZE * field.scale + (CELL_SIZE * field.scale) / 2;
                           puyo.setPosition(px, py);
-                          puyo.setScale(field.scale / 1.0); // createSmallPuyoの調整用
-                          puyo.setRadius(CELL_SIZE * 0.38 * field.scale);
-                          puyo.setDepth(field.bg.depth + 1);
+                          // Only set radius if it's a circle (not a container)
+                          if (puyo.type === 'Arc') {
+                              puyo.setRadius(CELL_SIZE * 0.38 * field.scale);
+                          }
+                          if (field.bg) {
+                              puyo.setDepth(field.bg.depth + 1);
+                          }
                       }
                   }
               }
@@ -1435,12 +1455,12 @@
                   this.lastMoveTime = time;
               }
 
-              if (Phaser.Input.Keyboard.JustDown(this.cursors.up) && time > this.lastRotateTime + 100) {
+              if (Phaser.Input.Keyboard.JustDown(this.cursors.up) && time > this.lastRotateTime + 200) {
                   this.rotatePair();
                   this.lastRotateTime = time;
               }
 
-              if (Phaser.Input.Keyboard.JustDown(this.spaceKey) || Phaser.Input.Keyboard.JustDown(this.cursors.down)) {
+              if (Phaser.Input.Keyboard.JustDown(this.spaceKey)) {
                   this.hardDrop();
               }
 
@@ -2260,7 +2280,9 @@
                       const distance = (40 + Math.random() * 20) * field.scale;
                       
                       const particle = this.add.circle(x, y, 6 * field.scale, COLOR_VALUES[color]);
-                      particle.setDepth(field.bg.depth + 100);
+                      if (field.bg) {
+                          particle.setDepth(field.bg.depth + 100);
+                      }
                       this.tweens.add({
                           targets: particle,
                           x: x + Math.cos(angle) * distance,
@@ -2274,7 +2296,9 @@
                   }
                   
                   const ring = this.add.circle(x, y, 10 * field.scale, 0xffffff, 0.8);
-                  ring.setDepth(field.bg.depth + 100);
+                  if (field.bg) {
+                      ring.setDepth(field.bg.depth + 100);
+                  }
                   this.tweens.add({
                       targets: ring,
                       radius: 40 * field.scale,

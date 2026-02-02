@@ -15,9 +15,9 @@ const rooms = new Map();
 
 // ルームコード生成（6桁の英数字）
 function generateRoomCode() {
-  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  const chars = "0123456789";
   let code = "";
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 4; i++) {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return code;
@@ -286,10 +286,14 @@ function startGame(room) {
     state.ready = false;
   });
 
+  // 共通シードを生成
+  const seed = Math.floor(Math.random() * 1000000);
+
   const startMessage = JSON.stringify({
     type: "game_start",
     players: Array.from(room.playerStates.values()),
     settings: room.settings,
+    seed: seed,
   });
 
   room.players.forEach((player) => {
@@ -406,6 +410,14 @@ function sendGarbage(ws, data) {
       }),
     );
     
+    // 攻撃元（自分）に送信通知を送る（アニメーション用）
+    ws.send(JSON.stringify({
+      type: 'attack_ack',
+      targetId: targetId,
+      amount: data.amount,
+      sourcePositions: data.positions
+    }));
+
     // 全プレイヤーに攻撃情報をブロードキャスト（第三者攻撃の可視化）
     room.players.forEach((player) => {
       if (player.playerId !== ws.playerId && player.playerId !== targetId) {

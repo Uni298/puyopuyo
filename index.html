@@ -215,8 +215,8 @@
         <input
           type="text"
           id="roomCodeInput"
-          placeholder="ルームコード"
-          maxlength="6"
+          placeholder="ルームコード (4桁)"
+          maxlength="4"
         />
         <br />
         <button class="btn" onclick="joinRoom()">ルームに参加</button>
@@ -412,7 +412,13 @@
                   allPlayers = data.players;
                   hideWaitingRoom();
                   if (game && game.scene.scenes[0]) {
-                      game.scene.scenes[0].startNewGame(data.players, data.settings);
+                      game.scene.scenes[0].startNewGame(data.players, data.settings, data.seed);
+                  }
+                  break;
+
+              case 'attack_ack':
+                  if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
+                      game.scene.scenes[0].showMyAttack(data.targetId, data.amount, data.sourcePositions);
                   }
                   break;
 
@@ -500,7 +506,7 @@
           }
       }
       
-      // Enterキーでチャット送信
+      // Enterキーでチャット送信 & URLパラメータ処理
       document.addEventListener('DOMContentLoaded', () => {
           const chatInput = document.getElementById('chatInput');
           if (chatInput) {
@@ -509,6 +515,16 @@
                       sendChat();
                   }
               });
+          }
+
+          // URLパラメータ ?room=XXXX をチェック
+          const urlParams = new URLSearchParams(window.location.search);
+          const roomParam = urlParams.get('room');
+          if (roomParam) {
+              const roomCodeInput = document.getElementById('roomCodeInput');
+              if (roomCodeInput) {
+                  roomCodeInput.value = roomParam;
+              }
           }
       });
 
@@ -524,7 +540,7 @@
 
       function joinRoom() {
           const roomCode = document.getElementById('roomCodeInput').value.toUpperCase();
-          if (roomCode.length === 6 && ws && ws.readyState === WebSocket.OPEN) {
+          if (roomCode.length === 4 && ws && ws.readyState === WebSocket.OPEN) {
               const playerName = document.getElementById('playerNameInput').value.trim();
               ws.send(JSON.stringify({
                   type: 'join_room',
@@ -532,7 +548,7 @@
                   playerName: playerName || undefined
               }));
           } else {
-              alert('6桁のルームコードを入力してください');
+              alert('4桁のルームコードを入力してください');
           }
       }
 
@@ -691,7 +707,7 @@
               }).setOrigin(0.5).setDepth(1000).setVisible(false);
           }
 
-          startNewGame(players, settings) {
+          startNewGame(players, settings, seed) {
               if (this.gameStarted) return;
               this.gameStarted = true;
               this.players = players;
@@ -699,6 +715,10 @@
               this.gameSettings = settings || {};
               this.garbageRate = (this.gameSettings.garbageRate) ? this.gameSettings.garbageRate : 1.0;
               this.zoomedPlayerId = null;
+
+              // シード付き乱数初期化 (全員同じシード)
+              const initSeed = seed ? [seed] : [Date.now()];
+              this.rnd = new Phaser.Math.RandomDataGenerator(initSeed);
 
               // 待機テキストを削除
               if (this.waitingText) {
@@ -751,7 +771,7 @@
               // 1v1モード判定
               this.is1v1Mode = (players.length === 2);
               
-              let offsetX = 50;
+              let offsetX = 120; // デフォルト（BRモード）は少し右に寄せてNEXTを表示できるようにする
               
               if (this.is1v1Mode) {
                   // 1v1の場合は画面中央に寄せる
@@ -989,7 +1009,7 @@
                    
               } else {
                   // 通常のBattle Royaleモード（グリッドレイアウト）
-                  const startX = 50 + COLS * CELL_SIZE + 80;
+                  const startX = this.fieldOffsetX + COLS * CELL_SIZE + 50;
                   const fieldWidth = COLS * CELL_SIZE * 0.4;  // さらに小さく
                   const fieldHeight = ROWS * CELL_SIZE * 0.4;
                   const spacing = 15;
@@ -1250,10 +1270,12 @@
               
               // 操作中ピースの位置も更新
               if (field.pieceContainer) {
+                  field.pieceContainer.setDepth(field.bg.depth + 10);
                   field.pieceContainer.list.forEach(piece => {
                       // ピースは既にupdateOpponentPieceで正しい座標に配置されているが、
                       // スケールやDepthを更新する必要がある
-                      piece.setDepth(field.bg.depth + 10);
+                      // piece.setDepth(...) はコンテナ内の相対順序になるが、念のため
+                      piece.setDepth(0); 
                   });
               }
           }
@@ -1360,8 +1382,8 @@
           }
 
           createPuyoPair() {
-              const color1 = Phaser.Utils.Array.GetRandom(COLORS);
-              const color2 = Phaser.Utils.Array.GetRandom(COLORS);
+              const color1 = this.rnd.pick(COLORS);
+              const color2 = this.rnd.pick(COLORS);
               return {
                   main: { color: color1, sprite: null },
                   sub: { color: color2, sprite: null },
@@ -2194,30 +2216,6 @@
                       colors.push('gray');
                   }
 
-                  // 自分の攻撃が相手に飛んでいくアニメーション
-                  sourcePositions.slice(0, amount).forEach((pos, i) => {
-                      const startX = pos.x;
-                      const startY = pos.y;
-                      
-                      const particle = this.add.circle(startX, startY, CELL_SIZE * 0.25, 0x888888, 0.9);
-                      particle.setDepth(200);
-
-                      const targetX = Phaser.Math.Between(0, this.cameras.main.width);
-                      const targetY = -100;
-
-                      this.tweens.add({
-                          targets: particle,
-                          x: targetX,
-                          y: targetY,
-                          scale: 0.5,
-                          alpha: 0,
-                          duration: 800,
-                          delay: i * 30,
-                          ease: 'Power2',
-                          onComplete: () => particle.destroy()
-                      });
-                  });
-
                   ws.send(JSON.stringify({
                       type: 'send_garbage',
                       amount: amount,
@@ -2227,15 +2225,63 @@
               }
           }
 
+          showMyAttack(targetId, amount, sourcePositions) {
+              const targetField = this.opponentFields.get(targetId);
+              if (!targetField) return;
+
+              // 自分の攻撃が特定の相手に飛んでいくアニメーション
+              sourcePositions.slice(0, amount).forEach((pos, i) => {
+                  const startX = pos.x;
+                  const startY = pos.y;
+                  
+                  const particle = this.add.circle(startX, startY, CELL_SIZE * 0.25, 0x888888, 0.9);
+                  particle.setDepth(200);
+
+                  // 相手フィールドの中心へ
+                  let targetX = targetField.x; 
+                  let targetY = targetField.y;
+                  
+                  // フィールドの中央座標を計算 (scale考慮)
+                  if (!this.is1v1Mode) {
+                      // BRモードなどは中央基準で配置されている(createOpponentFields参照)
+                      // add.rectangle(x, y, ...) .setOrigin(0.5) なので x, y が中心
+                      targetX = targetField.x + targetField.width / 2;
+                      targetY = targetField.y + targetField.height / 2;
+                  } else {
+                      // 1v1モードも中心基準で描画するように修正されているか再確認
+                      // createOpponentFieldsの1v1部分はopponentXを計算し、
+                      // field.bg = this.add.rectangle(centerX, centerY...)
+                      // field.x は opponentX (左上)
+                      targetX = targetField.x + (COLS * CELL_SIZE) / 2;
+                      targetY = targetField.y + (ROWS * CELL_SIZE) / 2;
+                  }
+                  
+                  // 1v1の場合のターゲット調整（相手フィールドの上部から入るように見せるか、中心にぶつけるか）
+                  // ユーザー要望「送り先に飛ぶ」 -> 中心または上部
+                  
+                  this.tweens.add({
+                      targets: particle,
+                      x: targetX,
+                      y: targetY,
+                      scale: 0.5,
+                      alpha: 0,
+                      duration: 800,
+                      delay: i * 30,
+                      ease: 'Power2',
+                      onComplete: () => particle.destroy()
+                  });
+              });
+          }
+
           receiveGarbage(fromPlayerId, amount, colors, sourcePositions) {
               // 攻撃元のフィールドを取得
               const sourceField = this.opponentFields.get(fromPlayerId);
               if (!sourceField) return;
 
-              // おじゃまぷよをキューに追加 (4秒後に有効化)
+              // おじゃまぷよをキューに追加 (5秒後に有効化)
               this.garbageQueue.push({
                   amount: amount,
-                  time: this.time.now + 3000
+                  time: this.time.now + 5000
               });
               this.updateGarbageGauge();
 
@@ -2482,7 +2528,11 @@
               const field = this.opponentFields.get(playerId);
               if (!field) return;
 
-              this.collapseField(field);
+              // 3人以上生存（=自分を含めて3人以上いた状態で誰かが死んだ）場合は画面全体を揺らさない
+              const survivorCount = this.alivePlayers.length;
+              const isLocalShake = survivorCount >= 3;
+
+              this.collapseField(field, isLocalShake);
 
               // 生存プレイヤーリストから削除
               this.alivePlayers = this.alivePlayers.filter(id => id !== playerId);
@@ -2493,7 +2543,7 @@
               }
           }
 
-          collapseField(field) {
+          collapseField(field, isLocalShake = false) {
               // 枠の破裂アニメーション
               if (field.border) {
                   // 枠を複数の破片に見立てて破裂させる
@@ -2534,8 +2584,23 @@
                   });
               }
               
-              // 画面振動 (大)
-              this.cameras.main.shake(400, 0.02);
+              // 画面振動
+              if (isLocalShake) {
+                  // その人の枠だけ揺らす (擬似的な振動)
+                  if (field.bg) {
+                       this.tweens.add({
+                           targets: field.bg,
+                           x: '+=10',
+                           duration: 50,
+                           yoyo: true,
+                           repeat: 8,
+                           ease: 'Sine.easeInOut'
+                       });
+                  }
+              } else {
+                  // 全体振動 (大)
+                  this.cameras.main.shake(400, 0.02);
+              }
 
               // 背景とグラデーションの崩壊
               if (field.bg) {
@@ -2740,6 +2805,9 @@
               // 前回のピース表示を削除
               if (!field.pieceContainer) {
                   field.pieceContainer = this.add.container(0, 0);
+              }
+              if (field.bg) {
+                  field.pieceContainer.setDepth(field.bg.depth + 10);
               }
               field.pieceContainer.removeAll(true);
               

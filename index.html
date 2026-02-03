@@ -428,15 +428,17 @@
 
               case 'opponent_update':
                   if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
-                      game.scene.scenes[0].updateOpponentField(data.playerId, data.data);
+                      game.scene.scenes[0].updateOpponentField(data.playerId, data.data, data.garbageCount);
                   }
                   break;
 
-              case 'receive_garbage':
-                  if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
-                      game.scene.scenes[0].receiveGarbage(data.fromPlayerId, data.amount, data.colors, data.sourcePositions);
-                  }
-                  break;
+                  case 'receive_garbage':
+                      if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
+                          game.scene.scenes[0].receiveGarbage(data.fromPlayerId, data.amount, data.colors, data.sourcePositions);
+                          // ゲージ更新を即座に反映するために状態を送信
+                          game.scene.scenes[0].sendFieldUpdate();
+                      }
+                      break;
 
               case 'player_defeated':
                   if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
@@ -1005,6 +1007,37 @@
                        fontStyle: 'bold'
                    }).setOrigin(0.5);
                    
+                   // 1v1用: 相手の予告ゲージ (右寄せ)
+                   field.garbageGaugeBg = this.add.rectangle(
+                       opponentX - 35, // 左側に配置してみる -> 相手フィールドの左側
+                       ROWS * CELL_SIZE,
+                       20,
+                       ROWS * CELL_SIZE,
+                       0x333333,
+                       0.3
+                   ).setOrigin(0, 1).setDepth(50);
+
+                   field.garbageGauge = this.add.rectangle(
+                       opponentX - 35,
+                       ROWS * CELL_SIZE,
+                       20,
+                       0,
+                       0xff6b6b,
+                       0.8
+                   ).setOrigin(0, 1).setDepth(51);
+
+                   field.garbageCountText = this.add.text(
+                       opponentX - 5,
+                       ROWS * CELL_SIZE / 2 - ROWS * CELL_SIZE / 2 - 20,
+                       '',
+                       {
+                           fontSize: '16px',
+                           fontFamily: '"JetBrains Mono"',
+                           fill: '#ff6b6b',
+                           fontStyle: 'bold'
+                       }
+                   ).setOrigin(0.5).setDepth(52);
+                   
                    this.opponentFields.set(opponents[0].id, field);
                    
               } else {
@@ -1085,7 +1118,7 @@
               }
           }
 
-          updateOpponentField(playerId, gridData) {
+          updateOpponentField(playerId, gridData, garbageCount = 0) {
               const field = this.opponentFields.get(playerId);
               if (!field) return;
 
@@ -1157,6 +1190,19 @@
                           
                           field.grid[row][col] = puyo;
                       }
+                  }
+              }
+              
+              // 予告ゲージ更新 (1v1のみ)
+              if (field.garbageGauge && field.garbageGaugeBg) {
+                  const maxGarbage = 30;
+                  const ratio = Math.min(garbageCount / maxGarbage, 1);
+                  const gaugeHeight = ROWS * CELL_SIZE * ratio;
+                  
+                  field.garbageGauge.setSize(20, gaugeHeight); // 原点が下なので高さ変えるだけでOK
+                  
+                  if (field.garbageCountText) {
+                      field.garbageCountText.setText(garbageCount > 0 ? `${garbageCount}` : '');
                   }
               }
           }
@@ -1499,7 +1545,7 @@
                   this.defeatCountdownText.setText(remaining.toString());
                   this.defeatCountdownText.setPosition(
                       this.fieldOffsetX + COLS * CELL_SIZE / 2,
-                      ROWS * CELL_SIZE / 2
+                      ROWS * CELL_SIZE + 60
                   );
                   this.defeatCountdownText.setVisible(true);
               } else {
@@ -1787,8 +1833,9 @@
               this.chainCount = 0;  // チェインはリセット
               // コンボはリセットしない（消えなかったらリセット）
               
+              await this.applyGravity();  // 先に重力を適用してプヨを落とす
               await this.checkAndClearMatches();
-              await this.applyGravity();
+
 
               // 待機キューから確定へ移動 (時間が経過したもの)
               if (this.garbageQueue) {
@@ -1925,6 +1972,7 @@
                           
                           // 予告ゲージ更新
                           this.updateGarbageGauge();
+                          this.sendFieldUpdate(); // 即座に反映
                       }
 
                       await this.applyGravity();
@@ -2202,9 +2250,16 @@
                       }
                   }
 
+                  // 全待機おじゃまぷよ数を計算
+                  let totalGarbage = this.pendingGarbageCount;
+                  if (this.garbageQueue) {
+                      totalGarbage += this.garbageQueue.reduce((sum, item) => sum + item.amount, 0);
+                  }
+
                   ws.send(JSON.stringify({
                       type: 'game_update',
-                      gameState: gridData
+                      gameState: gridData,
+                      garbageCount: totalGarbage
                   }));
               }
           }
@@ -2447,6 +2502,7 @@
               const garbageToDrop = this.pendingGarbageCount;
               this.pendingGarbageCount = 0;
               this.updateGarbageGauge();
+              this.sendFieldUpdate(); // 即座に反映
 
               for (let i = 0; i < garbageToDrop; i++) {
                   const col = Phaser.Math.Between(0, COLS - 1);
@@ -2740,7 +2796,7 @@
                if (this.defeatCountdownText) {
                     this.defeatCountdownText.setPosition(
                         newFieldX + COLS * CELL_SIZE / 2,
-                        ROWS * CELL_SIZE / 2
+                        ROWS * CELL_SIZE + 60
                     );
                }
 

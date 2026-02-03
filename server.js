@@ -378,6 +378,7 @@ function broadcastGameUpdate(ws, data) {
           type: "opponent_update",
           playerId: ws.playerId,
           data: data.gameState,
+          garbageCount: data.garbageCount || 0,
         }),
       );
     }
@@ -409,14 +410,16 @@ function sendGarbage(ws, data) {
         sourcePositions: data.positions,
       }),
     );
-    
+
     // 攻撃元（自分）に送信通知を送る（アニメーション用）
-    ws.send(JSON.stringify({
-      type: 'attack_ack',
-      targetId: targetId,
-      amount: data.amount,
-      sourcePositions: data.positions
-    }));
+    ws.send(
+      JSON.stringify({
+        type: "attack_ack",
+        targetId: targetId,
+        amount: data.amount,
+        sourcePositions: data.positions,
+      }),
+    );
 
     // 全プレイヤーに攻撃情報をブロードキャスト（第三者攻撃の可視化）
     room.players.forEach((player) => {

@@ -7,13 +7,13 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-// 静的ファイルを提供
+// 静的ファイルを提侁E
 app.use(express.static(__dirname));
 
-// ルーム管理
+// ルーム管琁E
 const rooms = new Map();
 
-// ルームコード生成（6桁の英数字）
+
 function generateRoomCode() {
   const chars = "0123456789";
   let code = "";
@@ -23,12 +23,12 @@ function generateRoomCode() {
   return code;
 }
 
-// プレイヤーID生成
+
 function generatePlayerId() {
   return Math.random().toString(36).substring(2, 15);
 }
 
-// WebSocket接続処理
+// WebSocket接続�E琁E
 wss.on("connection", (ws) => {
   console.log("New client connected");
   ws.playerId = generatePlayerId();
@@ -146,6 +146,9 @@ function handleMessage(ws, data) {
     case "game_over":
       handleGameOver(ws);
       break;
+    case "return_to_lobby":
+      handleReturnToLobby(ws);
+      break;
   }
 }
 
@@ -174,6 +177,7 @@ function createRoom(ws, data) {
     playerStates: new Map(),
     gameStarted: false,
     alivePlayers: [],
+    playerTargets: new Map(),
     settings: {
       garbageRate: 1.0,
       dropSpeed: 500,
@@ -187,6 +191,8 @@ function createRoom(ws, data) {
     ready: false,
     alive: true,
     name: playerName,
+    score: 0,
+    isSpectator: false,
   });
 
   rooms.set(roomCode, room);
@@ -220,12 +226,32 @@ function joinRoom(ws, data) {
   }
 
   if (room.gameStarted) {
+    // ゲーム中の場合�E観戦モードで参加
+    room.players.push(ws);
+    const playerName = data.playerName || `Spectator ${room.players.length}`;
+    room.playerStates.set(ws.playerId, {
+      id: ws.playerId,
+      ready: false,
+      alive: false,
+      name: playerName,
+      score: 0,
+      isSpectator: true,
+    });
+
+    ws.roomCode = data.roomCode;
+    ws.isHost = false;
+    ws.isSpectator = true;
+
     ws.send(
       JSON.stringify({
-        type: "error",
-        message: "ゲームは既に開始しています",
+        type: "spectator_mode",
+        roomCode: data.roomCode,
+        playerId: ws.playerId,
+        players: Array.from(room.playerStates.values()),
       }),
     );
+
+    console.log(`Spectator joined room: ${data.roomCode}`);
     return;
   }
 
@@ -236,6 +262,8 @@ function joinRoom(ws, data) {
     ready: false,
     alive: true,
     name: playerName,
+    score: 0,
+    isSpectator: false,
   });
 
   ws.roomCode = data.roomCode;
@@ -269,7 +297,7 @@ function toggleReady(ws) {
 
   broadcastRoomState(room);
 
-  // 全員準備完了チェック
+
   const allReady = Array.from(room.playerStates.values()).every((p) => p.ready);
   if (allReady && room.players.length >= 2) {
     startGame(room);
@@ -280,13 +308,23 @@ function startGame(room) {
   room.gameStarted = true;
   room.alivePlayers = room.players.map((p) => p.playerId);
 
-  // 全プレイヤーの状態をリセット
+
   room.playerStates.forEach((state) => {
-    state.alive = true;
-    state.ready = false;
+    if (!state.isSpectator) {
+      state.alive = true;
+      state.ready = false;
+      state.score = 0;
+    }
   });
 
-  // 共通シードを生成
+
+  if (!room.playerTargets) {
+    room.playerTargets = new Map();
+  } else {
+    room.playerTargets.clear();
+  }
+
+
   const seed = Math.floor(Math.random() * 1000000);
 
   const startMessage = JSON.stringify({
@@ -317,7 +355,7 @@ function leaveRoom(ws) {
   room.alivePlayers = room.alivePlayers.filter((id) => id !== ws.playerId);
 
   if (ws.isHost && room.players.length > 0) {
-    // 新しいホストを選出
+
     room.host = room.players[0];
     room.host.isHost = true;
     room.host.send(
@@ -328,13 +366,12 @@ function leaveRoom(ws) {
   }
 
   if (room.players.length === 0) {
-    // ルームを削除
+
     rooms.delete(ws.roomCode);
     console.log(`Room deleted: ${ws.roomCode}`);
   } else {
     broadcastRoomState(room);
 
-    // ゲーム中の場合、生存者チェック
     if (room.gameStarted) {
       checkGameEnd(room);
     }
@@ -370,7 +407,7 @@ function broadcastGameUpdate(ws, data) {
   const room = rooms.get(ws.roomCode);
   if (!room) return;
 
-  // 全プレイヤーに状態を送信
+
   room.players.forEach((player) => {
     if (player.playerId !== ws.playerId) {
       player.send(
@@ -391,16 +428,30 @@ function sendGarbage(ws, data) {
   const room = rooms.get(ws.roomCode);
   if (!room) return;
 
-  // 攻撃対象を決定（ランダムに生きているプレイヤー）
-  const aliveOpponents = room.alivePlayers.filter((id) => id !== ws.playerId);
-  if (aliveOpponents.length === 0) return;
+  let targetId;
 
-  const targetId =
-    aliveOpponents[Math.floor(Math.random() * aliveOpponents.length)];
+  if (data.lockTarget && data.currentTarget) {
+
+    if (room.alivePlayers.includes(data.currentTarget)) {
+      targetId = data.currentTarget;
+    }
+  }
+
+  if (!targetId) {
+    const aliveOpponents = room.alivePlayers.filter((id) => id !== ws.playerId);
+    if (aliveOpponents.length === 0) return;
+
+    targetId =
+      aliveOpponents[Math.floor(Math.random() * aliveOpponents.length)];
+  }
+
+  // ターゲチE��を記録
+  room.playerTargets.set(ws.playerId, targetId);
+
   const targetPlayer = room.players.find((p) => p.playerId === targetId);
 
   if (targetPlayer) {
-    // ターゲットに送信
+    // ターゲチE��に送信
     targetPlayer.send(
       JSON.stringify({
         type: "receive_garbage",
@@ -411,7 +462,7 @@ function sendGarbage(ws, data) {
       }),
     );
 
-    // 攻撃元（自分）に送信通知を送る（アニメーション用）
+    // 攻撁E�E�E��E刁E��に送信通知を送る�E�アニメーション用�E�E
     ws.send(
       JSON.stringify({
         type: "attack_ack",
@@ -421,7 +472,7 @@ function sendGarbage(ws, data) {
       }),
     );
 
-    // 全プレイヤーに攻撃情報をブロードキャスト（第三者攻撃の可視化）
+    
     room.players.forEach((player) => {
       if (player.playerId !== ws.playerId && player.playerId !== targetId) {
         player.send(
@@ -451,7 +502,7 @@ function handleGameOver(ws) {
 
   room.alivePlayers = room.alivePlayers.filter((id) => id !== ws.playerId);
 
-  // 全プレイヤーに敗北を通知
+
   room.players.forEach((player) => {
     player.send(
       JSON.stringify({
@@ -466,8 +517,20 @@ function handleGameOver(ws) {
 
 function checkGameEnd(room) {
   if (room.alivePlayers.length === 1) {
-    // 勝者決定
+
     const winnerId = room.alivePlayers[0];
+
+
+    const playerScores = Array.from(room.playerStates.values())
+      .filter((p) => !p.isSpectator)
+      .sort((a, b) => (b.score || 0) - (a.score || 0))
+      .map((p, index) => ({
+        id: p.id,
+        name: p.name,
+        score: p.score || 0,
+        rank: index + 1,
+        isWinner: p.id === winnerId,
+      }));
 
     room.players.forEach((player) => {
       player.send(
@@ -475,28 +538,47 @@ function checkGameEnd(room) {
           type: "game_end",
           winnerId: winnerId,
           isWinner: player.playerId === winnerId,
+          scoreboard: playerScores,
         }),
       );
     });
 
-    // ゲームをリセット
+
     setTimeout(() => {
       room.gameStarted = false;
       room.alivePlayers = [];
       room.playerStates.forEach((state) => {
-        state.ready = false;
-        state.alive = true;
+        if (!state.isSpectator) {
+          state.ready = false;
+          state.alive = true;
+          state.score = 0;
+        }
       });
+      if (room.playerTargets) {
+        room.playerTargets.clear();
+      }
       broadcastRoomState(room);
     }, 3000);
   } else if (room.alivePlayers.length === 0) {
-    // 引き分け（全員同時に敗北）
+
+    const playerScores = Array.from(room.playerStates.values())
+      .filter((p) => !p.isSpectator)
+      .sort((a, b) => (b.score || 0) - (a.score || 0))
+      .map((p, index) => ({
+        id: p.id,
+        name: p.name,
+        score: p.score || 0,
+        rank: index + 1,
+        isWinner: false,
+      }));
+
     room.players.forEach((player) => {
       player.send(
         JSON.stringify({
           type: "game_end",
           winnerId: null,
           isWinner: false,
+          scoreboard: playerScores,
         }),
       );
     });
@@ -505,15 +587,41 @@ function checkGameEnd(room) {
       room.gameStarted = false;
       room.alivePlayers = [];
       room.playerStates.forEach((state) => {
-        state.ready = false;
-        state.alive = true;
+        if (!state.isSpectator) {
+          state.ready = false;
+          state.alive = true;
+          state.score = 0;
+        }
       });
+      if (room.playerTargets) {
+        room.playerTargets.clear();
+      }
       broadcastRoomState(room);
     }, 3000);
   }
+}
+
+function handleReturnToLobby(ws) {
+  if (!ws.roomCode) return;
+
+  const room = rooms.get(ws.roomCode);
+  if (!room) return;
+
+
+  if (ws !== room.host) return;
+
+
+  room.players.forEach((player) => {
+    player.send(
+      JSON.stringify({
+        type: "force_return_lobby",
+      }),
+    );
+  });
 }
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
+

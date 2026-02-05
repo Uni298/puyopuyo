@@ -28,24 +28,66 @@ function generatePlayerId() {
   return Math.random().toString(36).substring(2, 15);
 }
 
-// WebSocket接続�E琁E
-wss.on("connection", (ws) => {
+// ハートビート間隔 (30秒)
+const HEARTBEAT_INTERVAL = 30000;
+
+function noop() {}
+
+function heartbeat() {
+  this.isAlive = true;
+}
+
+// WebSocket接続処理
+wss.on('connection', (ws) => {
   console.log("New client connected");
   ws.playerId = generatePlayerId();
+  ws.isAlive = true;
+  ws.on('pong', heartbeat);
 
-  ws.on("message", (message) => {
+  // クライアントからのメッセージ処理
+  ws.on('message', (message) => {
     try {
       const data = JSON.parse(message);
+      
+      // クライアントからのPONG相当のメッセージがあれば処理
+      if (data.type === 'pong') {
+          ws.isAlive = true;
+          return;
+      }
+
       handleMessage(ws, data);
-    } catch (error) {
-      console.error("Error parsing message:", error);
+    } catch (e) {
+      console.error('Json parse error:', e);
     }
   });
 
-  ws.on("close", () => {
+  // 切断時の処理
+  ws.on('close', () => {
     console.log("Client disconnected");
-    handleDisconnect(ws);
+    handleDisconnect(ws); // Keep original disconnect logic
+    if (ws.roomCode) {
+      leaveRoom(ws);
+    }
   });
+});
+
+// 定期的にPingを送信して生存確認
+const interval = setInterval(() => {
+  wss.clients.forEach((ws) => {
+    if (ws.isAlive === false) {
+      return ws.terminate();
+    }
+
+    ws.isAlive = false;
+    ws.ping(noop);
+    // ブラウザのWS実装によってはpingフレームを直接扱えない場合があるので、
+    // アプリケーションレベルのpingも送っておく
+    ws.send(JSON.stringify({ type: 'ping' }));
+  });
+}, HEARTBEAT_INTERVAL);
+
+wss.on('close', () => {
+  clearInterval(interval);
 });
 
 function handleMessage(ws, data) {
@@ -146,6 +188,12 @@ function handleMessage(ws, data) {
     case "game_over":
       handleGameOver(ws);
       break;
+    case 'leave_room':
+      handleLeaveRoom(ws);
+      break;
+    case 'game_reset':
+      // ... (existing)
+      break;
     case "return_to_lobby":
       handleReturnToLobby(ws);
       break;
@@ -182,6 +230,7 @@ function createRoom(ws, data) {
       garbageRate: 1.0,
       dropSpeed: 500,
       defeatTime: 10,
+      garbagePrediction: true, // デフォルトでON
     },
   };
 
@@ -407,6 +456,13 @@ function broadcastGameUpdate(ws, data) {
   const room = rooms.get(ws.roomCode);
   if (!room) return;
 
+  // スコアを更新
+  if (data.score !== undefined) {
+    const playerState = room.playerStates.get(ws.playerId);
+    if (playerState) {
+      playerState.score = data.score;
+    }
+  }
 
   room.players.forEach((player) => {
     if (player.playerId !== ws.playerId) {
@@ -416,6 +472,7 @@ function broadcastGameUpdate(ws, data) {
           playerId: ws.playerId,
           data: data.gameState,
           garbageCount: data.garbageCount || 0,
+          score: data.score // 相手にもスコアを送る（表示用）
         }),
       );
     }
@@ -624,4 +681,3 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
-

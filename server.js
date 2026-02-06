@@ -2,6 +2,8 @@ const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
 const path = require("path");
+const discordBot = require("./discord_bot"); // Import Bot
+require('dotenv').config();
 
 const app = express();
 const server = http.createServer(app);
@@ -170,6 +172,10 @@ function handleMessage(ws, data) {
         if (room) {
           const playerState = room.playerStates.get(ws.playerId);
           const playerName = playerState ? playerState.name : "Unknown";
+          
+          // Discordに送信
+          discordBot.sendChatMessage(ws.roomCode, playerName, data.message);
+
           room.players.forEach((player) => {
             player.send(
               JSON.stringify({
@@ -331,6 +337,7 @@ function joinRoom(ws, data) {
   console.log(
     `Player joined room: ${data.roomCode} (Total: ${room.players.length})`,
   );
+  discordBot.updateRoomInfo(data.roomCode);
 }
 
 function toggleReady(ws) {
@@ -345,6 +352,7 @@ function toggleReady(ws) {
   playerState.ready = !playerState.ready;
 
   broadcastRoomState(room);
+  discordBot.updateRoomInfo(ws.roomCode);
 
 
   const allReady = Array.from(room.playerStates.values()).every((p) => p.ready);
@@ -390,6 +398,7 @@ function startGame(room) {
   console.log(
     `Game started in room: ${room.code} with ${room.players.length} players`,
   );
+  discordBot.updateRoomInfo(room.code);
 }
 
 function leaveRoom(ws) {
@@ -418,6 +427,7 @@ function leaveRoom(ws) {
 
     rooms.delete(ws.roomCode);
     console.log(`Room deleted: ${ws.roomCode}`);
+    discordBot.onRoomClosed(ws.roomCode);
   } else {
     broadcastRoomState(room);
 
@@ -427,6 +437,7 @@ function leaveRoom(ws) {
   }
 
   console.log(`Player left room: ${ws.roomCode}`);
+  discordBot.updateRoomInfo(ws.roomCode);
 }
 
 function handleDisconnect(ws) {
@@ -570,6 +581,7 @@ function handleGameOver(ws) {
   });
 
   checkGameEnd(room);
+  discordBot.updateRoomInfo(ws.roomCode);
 }
 
 function checkGameEnd(room) {
@@ -600,6 +612,14 @@ function checkGameEnd(room) {
       );
     });
 
+    // Discord Bot Notification
+    const winnerName = room.playerStates.get(winnerId)?.name || 'Unknown';
+    // We need roomCode. Assuming it's added to room object or we search.
+    // I will add code to room object in createRoom later if needed.
+    if (room.code) {
+        discordBot.notifyGameEnd(room.code, winnerName);
+    }
+
 
     setTimeout(() => {
       room.gameStarted = false;
@@ -615,6 +635,7 @@ function checkGameEnd(room) {
         room.playerTargets.clear();
       }
       broadcastRoomState(room);
+      discordBot.updateRoomInfo(room.code);
     }, 3000);
   } else if (room.alivePlayers.length === 0) {
 
@@ -654,6 +675,7 @@ function checkGameEnd(room) {
         room.playerTargets.clear();
       }
       broadcastRoomState(room);
+      discordBot.updateRoomInfo(room.code);
     }, 3000);
   }
 }
@@ -679,5 +701,25 @@ function handleReturnToLobby(ws) {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
+  console.log(`Server started on port ${PORT}`);
+
+  const DISCORD_TOKEN = process.env.DISCORD_TOKEN || ''; 
+  if (DISCORD_TOKEN) {
+      discordBot.startBot(DISCORD_TOKEN, { rooms, broadcastChat });
+  } else {
+      console.log("Discord Bot: DISCORD_TOKEN not set. Bot disabled.");
+  }
 });
+
+function broadcastChat(roomCode, senderName, message) {
+    const room = rooms.get(roomCode);
+    if (!room) return;
+
+    room.players.forEach((player) => {
+        player.send(JSON.stringify({
+            type: "chat_message",
+            playerName: `[Discord] ${senderName}`,
+            message: message
+        }));
+    });
+}

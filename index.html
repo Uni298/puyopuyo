@@ -194,6 +194,35 @@
       .hidden {
         display: none !important;
       }
+
+      /* 通知トースト */
+      #notification-area {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 2000;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        pointer-events: none;
+      }
+      .toast {
+        background: rgba(44, 62, 80, 0.9);
+        color: white;
+        padding: 15px 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        animation: slideIn 0.3s ease-out forwards;
+        display: flex;
+        align-items: center;
+        min-width: 250px;
+        border-left: 5px solid #3498db;
+        font-weight: bold;
+      }
+      @keyframes slideIn {
+        from { transform: translateX(120%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
     </style>
   </head>
   <body>
@@ -225,6 +254,9 @@
       <div id="waitingRoom" class="hidden">
         <h2>ルームコード</h2>
         <div id="roomCode"></div>
+        <button id="copyDiscordCmdBtn" class="btn" onclick="copyDiscordCommand()" style="background: #5865F2; font-size: 14px; padding: 10px 20px; display: none;">
+          Discordコマンドをコピー
+        </button>
 
         <div id="playerList"></div>
 
@@ -295,6 +327,41 @@
       let myPlayerId = null;
       let myReady = false;
       let allPlayers = [];
+
+      function copyDiscordCommand() {
+          if (!currentRoom) return;
+          const cmd = `!puyo ${currentRoom}`;
+          navigator.clipboard.writeText(cmd).then(() => {
+              alert('Discord用コマンドをコピーしました:\n' + cmd);
+          }).catch(err => {
+              console.error('Copy failed', err);
+              prompt('コピーしてください:', cmd);
+          });
+      }
+
+      function showNotification(message, duration = 5000) {
+          let container = document.getElementById('notification-area');
+          if (!container) {
+              container = document.createElement('div');
+              container.id = 'notification-area';
+              document.body.appendChild(container);
+          }
+          
+          const toast = document.createElement('div');
+          toast.className = 'toast';
+          toast.innerText = message; 
+          
+          container.appendChild(toast);
+          
+          // 効果音があれば鳴らす（オプション）
+          
+          setTimeout(() => {
+              toast.style.opacity = '0';
+              toast.style.transform = 'translateX(120%)';
+              toast.style.transition = 'all 0.3s ease-in';
+              setTimeout(() => toast.remove(), 300);
+          }, duration);
+      }
 
       function connectWebSocket() {
           const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -387,14 +454,20 @@
                       if (document.activeElement !== garbageInput) garbageInput.value = data.settings.garbageRate;
                       if (document.activeElement !== dropInput) dropInput.value = data.settings.dropSpeed || 500;
                       if (document.activeElement !== defeatInput) defeatInput.value = data.settings.defeatTime || 10;
-                      if (predictionInput) predictionInput.checked = data.settings.garbagePrediction !== false; // Default true
+                      // predictionInput reference removed
                       
                       // ホスト以外は無効化
                       const isMyHost = (data.hostId === myPlayerId);
                       garbageInput.disabled = !isMyHost;
                       dropInput.disabled = !isMyHost;
                       defeatInput.disabled = !isMyHost;
-                      // predictionInput disabled removed
+                      // garbagePrediction disabled logic removed
+
+                      // Discordボタンの表示切替
+                      const discordBtn = document.getElementById('copyDiscordCmdBtn');
+                      if (discordBtn) {
+                          discordBtn.style.display = isMyHost ? 'inline-block' : 'none';
+                      }
                       
                       // ホスト権限更新
                       if (isMyHost) {
@@ -414,7 +487,7 @@
                           garbageInput.onchange = updateSettings;
                           dropInput.onchange = updateSettings;
                           defeatInput.onchange = updateSettings;
-                          if(predictionInput) predictionInput.onchange = updateSettings;
+                          // predictionInput onchange removed
                       } else {
                           garbageInput.onchange = null;
                           dropInput.onchange = null;
@@ -483,6 +556,12 @@
                       game.scene.scenes[0].updateOpponentPiece(data.playerId, data.data);
                   }
                   break;
+              
+              case 'discord_join_request':
+                  showNotification(`🔔 Discord参加希望: ${data.discordName} さんが参加を希望しています！`);
+                  break;
+
+              case 'hard_drop_animation':
 
               case 'third_party_attack':
                   if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
@@ -750,6 +829,7 @@
 
               // キーボード設定
               this.cursors = this.input.keyboard.createCursorKeys();
+              this.wasd = this.input.keyboard.addKeys({ up: 'W', left: 'A', down: 'S', right: 'D' });
               this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
 
               // タッチ・スワイプ設定
@@ -993,11 +1073,11 @@
                    // 1v1モード: 相手フィールドも自分と同じサイズ・見た目で右側に配置
                    const playerX = this.fieldOffsetX;
                    const opponentX = playerX + COLS * CELL_SIZE + 100; // 100pxの間隔
-                   const opponentY = 0; // Y座標は同じ
+                   const opponentY = 40; // Y座標は同じ
                    
                    const field = {
                        x: opponentX,
-                       y: opponentY, // createField準拠のY座標 (0基準)
+                       y: opponentY - CELL_SIZE, // Shifted up by 1 cell for alignment
                        width: COLS * CELL_SIZE,
                        height: ROWS * CELL_SIZE,
                        scale: 1.0, 
@@ -1022,11 +1102,11 @@
                    // createFieldの実装を見る限り、(x, 0)起点で描画している
                    
                    const centerX = opponentX + COLS * CELL_SIZE / 2;
-                   const centerY = ROWS * CELL_SIZE / 2;
+                   const centerY = opponentY + ROWS * CELL_SIZE / 2;
                    
                    field.bg = this.add.rectangle(
                        centerX,
-                       centerY,
+                       centerY - CELL_SIZE, // Shift BG UP by 1 cell
                        COLS * CELL_SIZE,
                        ROWS * CELL_SIZE,
                        0xffffff
@@ -1037,12 +1117,17 @@
                    field.bg.setInteractive();
                    field.bg.on('pointerdown', () => this.toggleZoom(field.playerId));
 
-                   const gradient = this.add.image(opponentX, 0, 'gradient').setOrigin(0).setDepth(-10);
+                   const gradient = this.add.image(opponentX, opponentY - CELL_SIZE, 'gradient').setOrigin(0).setDepth(-10); // Shift Gradient UP
                    
                    // 枠
                    field.border = this.add.rectangle(
                        centerX,
-                       centerY,
+                       centerY - CELL_SIZE, // Adjusted -1 mass (Center shift might be needed or height reduction? No, user said shift up)
+                       // Actually user said "shift everything up by 1 mass". CenterY is calculated as top + half_height.
+                       // If we shift top up by CELL_SIZE...
+                       // Wait, if opponentY is top, and we want to shift visual UP, we subtract CELL_SIZE.
+                       // But field.bg is at centerY.
+                       // Let's shift centerY.
                        COLS * CELL_SIZE + 4,
                        ROWS * CELL_SIZE + 4,
                        0x000000,
@@ -1062,7 +1147,9 @@
                    }
                    
                    // プレイヤー名
-                   field.name = this.add.text(centerX, -25, opponents[0].name, {
+                   // プレイヤー名
+                   // プレイヤー名
+                   field.name = this.add.text(centerX, opponentY - 25 - CELL_SIZE, opponents[0].name, {
                        fontSize: '20px',
                        fontFamily: '"JetBrains Mono"',
                        fill: '#333',
@@ -1070,9 +1157,10 @@
                    }).setOrigin(0.5);
                    
                    // 1v1用: 相手の予告ゲージ (右寄せ)
+                   // 1v1用: 相手の予告ゲージ (右寄せ)
                    field.garbageGaugeBg = this.add.rectangle(
                        opponentX - 35, // 左側に配置してみる -> 相手フィールドの左側
-                       ROWS * CELL_SIZE,
+                       opponentY + ROWS * CELL_SIZE - 5 - CELL_SIZE, // Adjusted -1 mass
                        20,
                        ROWS * CELL_SIZE,
                        0x333333,
@@ -1081,7 +1169,7 @@
 
                    field.garbageGauge = this.add.rectangle(
                        opponentX - 35,
-                       ROWS * CELL_SIZE,
+                       opponentY + ROWS * CELL_SIZE - 5 - CELL_SIZE, // Adjusted -1 mass
                        20,
                        0,
                        0xff6b6b,
@@ -1090,7 +1178,7 @@
 
                    field.garbageCountText = this.add.text(
                        opponentX - 5,
-                       ROWS * CELL_SIZE / 2 - ROWS * CELL_SIZE / 2 - 20,
+                       opponentY - 20 - CELL_SIZE,
                        '',
                        {
                            fontSize: '16px',
@@ -1452,7 +1540,7 @@
               this.input.on('pointerupoutside', handleTouchEnd); // 画面外で指を離した場合も検知
           }
 
-          createPuyo(x, y, color, isGhost = false, customAlpha = 1) {
+          createPuyo(x, y, color, isGhost = false, customAlpha = 1, animate = true) {
               const puyo = this.add.container(x, y);
               const radius = CELL_SIZE * 0.38;
 
@@ -1482,7 +1570,7 @@
               puyo.setAlpha(isGhost ? 0.3 : customAlpha);
               puyo.setSize(CELL_SIZE, CELL_SIZE);
 
-              if (!isGhost && customAlpha === 1) {
+              if (!isGhost && customAlpha === 1 && animate) {
                   puyo.setScale(0);
                   puyo.setAngle(-180);
                   this.tweens.add({
@@ -1602,20 +1690,20 @@
           update(time) {
               if (this.gameOver || !this.currentPair || this.isMoving || !this.gameStarted) return;
 
-              if (this.cursors.left.isDown && time > this.lastMoveTime + 150) {
+              if ((this.cursors.left.isDown || this.wasd.left.isDown) && time > this.lastMoveTime + 150) {
                   this.movePair(-1);
                   this.lastMoveTime = time;
-              } else if (this.cursors.right.isDown && time > this.lastMoveTime + 150) {
+              } else if ((this.cursors.right.isDown || this.wasd.right.isDown) && time > this.lastMoveTime + 150) {
                   this.movePair(1);
                   this.lastMoveTime = time;
               }
 
-              if (Phaser.Input.Keyboard.JustDown(this.cursors.up) && time > this.lastRotateTime + 50) {
+              if ((Phaser.Input.Keyboard.JustDown(this.cursors.up) || Phaser.Input.Keyboard.JustDown(this.wasd.up)) && time > this.lastRotateTime + 50) {
                   this.rotatePair();
                   this.lastRotateTime = time;
               }
 
-              if (Phaser.Input.Keyboard.JustDown(this.spaceKey) || Phaser.Input.Keyboard.JustDown(this.cursors.down)) {
+              if (Phaser.Input.Keyboard.JustDown(this.spaceKey) || Phaser.Input.Keyboard.JustDown(this.cursors.down) || Phaser.Input.Keyboard.JustDown(this.wasd.down)) {
                   this.hardDrop();
               }
 
@@ -1929,7 +2017,7 @@
               this.currentPair = null;
 
               // 次の操作を許可（非同期処理開始）
-              this.processBoardMatches(); // バックグラウンドで連鎖処理
+              this.processBoardMatches(); // メイン処理を待機
               
               this.isMoving = false;
               this.spawnNewPair();
@@ -1967,7 +2055,7 @@
               if (this.pendingGarbageCount > 0) {
                   // 少し遅らせておじゃまぷよの落下演出
                   this.time.delayedCall(200, () => {
-                      this.dropGarbagePuyos(); // これも非同期かも？一旦ここで呼び出し
+                      this.dropGarbagePuyos();
                   });
               }
 
@@ -2624,42 +2712,89 @@
           }
 
           async dropGarbagePuyos() {
-              if (this.pendingGarbageCount === 0) return;
+              if (this.pendingGarbageCount <= 0) return;
 
-              const garbageToDrop = this.pendingGarbageCount;
-              this.pendingGarbageCount = 0;
+              const dropAmount = Math.min(this.pendingGarbageCount, 30); // 一度に降る最大数
+              this.pendingGarbageCount -= dropAmount;
               this.updateGarbageGauge();
               this.sendFieldUpdate(); // 即座に反映
 
-              for (let i = 0; i < garbageToDrop; i++) {
+              // このバッチ内で列ごとに何個落とすか追跡
+              const dropsPerCol = new Array(COLS).fill(0);
+              const promises = [];
+
+              for (let i = 0; i < dropAmount; i++) {
                   const col = Phaser.Math.Between(0, COLS - 1);
-                  const startY = -CELL_SIZE;
+                  const startY = -CELL_SIZE - (dropsPerCol[col] * CELL_SIZE); // 既にこのバッチで落としている分だけ上から
+                  dropsPerCol[col]++;
+                  
                   const x = this.fieldOffsetX + col * CELL_SIZE + CELL_SIZE / 2;
 
-                  let targetRow = 0;
+                  // 暫定的なターゲット（アニメーション用）- 実際には着地時に再計算
+                  let targetRowEstimate = 0;
+                  // 一番下の空きを探す
                   for (let row = ROWS - 1; row >= 0; row--) {
                       if (!this.grid[row][col]) {
-                          targetRow = row;
+                          targetRowEstimate = row;
                           break;
                       }
                   }
+                  // バッチ内の積み上がり分を考慮（上に積む＝行番号を減らす）
+                  targetRowEstimate -= (dropsPerCol[col] - 1);
+                  if (targetRowEstimate < 0) targetRowEstimate = 0; 
 
-                  const puyo = this.createPuyo(x, startY, 'gray');  // 常にgray
-                  this.grid[targetRow][col] = puyo;
+                  // Gridにはまだ入れない！（Late-Binding）
+                  const puyo = this.createPuyo(x, startY, 'gray');
+                  puyo.setDepth(15); // プレイヤーの現在操作中のぷよより奥にする
 
-                  this.tweens.add({
-                      targets: puyo,
-                      y: targetRow * CELL_SIZE + CELL_SIZE / 2,
-                      duration: 300 + targetRow * 30,
-                      ease: 'Bounce.easeOut'
+                  const p = new Promise(resolve => {
+                      this.tweens.add({
+                          targets: puyo,
+                          y: targetRowEstimate * CELL_SIZE + CELL_SIZE / 2,
+                          duration: 400 + targetRowEstimate * 20,
+                          ease: 'Bounce.easeOut',
+                          onComplete: () => {
+                              // アニメーション完了時に改めて着地判定
+                              this.finalizeGarbageDrop(puyo, col);
+                              resolve();
+                          }
+                      });
                   });
+                  promises.push(p);
 
-                  await this.delay(150);
+                  // 少しずらす（視覚的効果）
+                  await this.delay(50);
               }
 
-              await this.delay(300);
-              await this.applyGravity();
+              // 全てのアニメーション完了を待つ
+              await Promise.all(promises);
+
+              // 最後に境界チェック
               this.checkBorderLine();
+          }
+
+          finalizeGarbageDrop(puyo, col) {
+               // 最新のグリッド状況で空き場所を探す
+               let targetRow = -1;
+               for (let row = ROWS - 1; row >= 0; row--) {
+                   if (!this.grid[row][col]) {
+                       targetRow = row;
+                       break;
+                   }
+               }
+               
+               if (targetRow >= 0) {
+                   // 着地成功：グリッドに登録
+                   this.grid[targetRow][col] = puyo;
+                   // 位置補正（プレイヤーが下に置いていた場合など、ターゲットが変わるため）
+                   puyo.y = targetRow * CELL_SIZE + CELL_SIZE / 2;
+                   puyo.setDepth(20); // 通常のぷよと同じ深度に戻す
+                   
+                   // 着地エフェクトなどを入れるならここ
+               } else {
+                   // 溢れた場合
+                   puyo.destroy();
+               }
           }
 
           checkBorderLine() {
@@ -2724,12 +2859,15 @@
 
               // 1v1になったか確認（観戦者も含む）
               if (this.alivePlayers.length === 2) {
-                  console.log('Switching to 1v1 Mode!');
-                  this.switchTo1v1();
+                  console.log('Switching to 1v1 Mode! (Delayed)');
+                  this.time.delayedCall(3000, () => {
+                       this.switchTo1v1();
+                  });
               }
           }
 
           collapseMyField() {
+              console.log('=== collapseMyField CALLED ===');
               console.log('collapseMyField executing');
               
               const shakeTargets = [];
@@ -2778,9 +2916,25 @@
                           }
                       });
 
+                      // Explicitly add all grid puyos to ensure they scatter
+                      for (let row = 0; row < ROWS; row++) {
+                          for (let col = 0; col < COLS; col++) {
+                              if (this.grid[row][col] && this.grid[row][col].active) {
+                                  // Avoid duplicates
+                                  if (!puyoElements.includes(this.grid[row][col])) {
+                                      puyoElements.push(this.grid[row][col]);
+                                  }
+                              }
+                          }
+                      }
+
+
+                      console.log('collapseMyField - Scattering puyos:', puyoElements.length, 'frame elements:', frameElements.length);
+                      console.log('Sample puyo element:', puyoElements[0]);
+
                       const applyCollapseTween = (targets) => {
                           targets.forEach(el => {
-                              const vx = (Math.random() - 0.5) * 600; 
+                              const vx = (Math.random() - 0.5) * 1000; // Increased for more scatter
                               const rot = (Math.random() - 0.5) * 60; 
                               
                               this.tweens.add({
@@ -2804,6 +2958,9 @@
           }
 
           collapseField(field, isLocalShake = false) {
+              console.log('=== collapseField CALLED for player:', field.playerId, '===');
+              field.isCollapsing = true; // Prevent redraw during collapse
+              
               const baseDuration = 40;
               const shakeTargets = [];
               
@@ -3065,6 +3222,74 @@
               }
           }
 
+          updateOpponentField(playerId, data, garbageCount) {
+              const field = this.opponentFields.get(playerId);
+              if (!field) return;
+              
+              // Don't update if field is collapsing
+              if (field.isCollapsing) {
+                  console.log('Skipping updateOpponentField - field is collapsing');
+                  return;
+              }
+
+              // Grid update
+              if (data && data.length === ROWS) {
+                  // Clear existing grid visuals
+                  for (let r = 0; r < ROWS; r++) {
+                      for (let c = 0; c < COLS; c++) {
+                         if (field.grid[r][c]) {
+                             field.grid[r][c].destroy();
+                             field.grid[r][c] = null;
+                         }
+                      }
+                  }
+
+                  // Rebuild grid
+                  for (let r = 0; r < ROWS; r++) {
+                      for (let c = 0; c < COLS; c++) {
+                          const color = data[r][c];
+                          if (color) {
+                              const x = field.x + c * CELL_SIZE * field.scale + (CELL_SIZE * field.scale) / 2;
+                              const y = field.y + r * CELL_SIZE * field.scale + (CELL_SIZE * field.scale) / 2;
+                              
+                              if (this.is1v1Mode) {
+                                  // Use createPuyo for full texture in 1v1
+                                  // x, y, color, isGhost, customAlpha, animate
+                                  const puyoContainer = this.createPuyo(x, y, color, false, 1, false); // Animate=false to prevent flicker
+                                  puyoContainer.setScale(field.scale);
+                                  // createPuyo adds puyo to 'this', but we want it tracked in grid
+                                  // We should set depth
+                                  puyoContainer.setDepth(field.bg.depth + 5);
+                                  // createPuyo sets 'color' data
+                                  
+                                  field.grid[r][c] = puyoContainer;
+                              } else {
+                                  // Simple circle for Battle Royale (performance)
+                                  const puyo = this.add.circle(x, y, CELL_SIZE * 0.38 * field.scale, COLOR_VALUES[color]);
+                                  puyo.setStrokeStyle(2 * field.scale, 0xffffff, 0.5);
+                                  puyo.setDepth(field.bg.depth + 5);
+                                  puyo.setData('color', color); 
+                                  field.grid[r][c] = puyo;
+                              }
+                          }
+                      }
+                  }
+              }
+
+              // Update Garbage Gauge
+              if (garbageCount !== undefined) {
+                   const maxGarbage = 30; // 5 lines * 6 = 30
+                   const ratio = Math.min(garbageCount / maxGarbage, 1);
+                   const gaugeHeight = (ROWS * CELL_SIZE) * ratio;
+                   if (field.garbageGauge) {
+                       field.garbageGauge.height = gaugeHeight;
+                   }
+                   if (field.garbageCountText) {
+                       field.garbageCountText.setText(garbageCount > 0 ? garbageCount.toString() : '');
+                   }
+              }
+          }
+
           updateOpponentPiece(playerId, data) {
               const field = this.opponentFields.get(playerId);
               if (!field) return;
@@ -3087,10 +3312,20 @@
                   const x = field.x + pos.col * CELL_SIZE * field.scale + (CELL_SIZE * field.scale) / 2;
                   const y = field.y + pos.row * CELL_SIZE * field.scale + (CELL_SIZE * field.scale) / 2;
                   
-                  const puyo = this.add.circle(x, y, CELL_SIZE * 0.38 * field.scale, COLOR_VALUES[color], 0.6);
-                  puyo.setStrokeStyle(2 * field.scale, 0xffffff, 0.5);
-                  puyo.setDepth(field.bg.depth + 10);
-                  field.pieceContainer.add(puyo);
+                  if (this.is1v1Mode) {
+                      // Use createPuyo for full texture in 1v1
+                      const puyoContainer = this.createPuyo(x, y, color, false, 0.6, false);
+                      puyoContainer.setScale(field.scale);
+                      puyoContainer.setDepth(field.bg.depth + 10);
+                      field.pieceContainer.add(puyoContainer);
+                  } else {
+                      // Simple circle for Battle Royale
+                      const puyo = this.add.circle(x, y, CELL_SIZE * 0.38 * field.scale, COLOR_VALUES[color], 0.6);
+                      puyo.setData('color', color);
+                      puyo.setStrokeStyle(2 * field.scale, 0xffffff, 0.5);
+                      puyo.setDepth(field.bg.depth + 10);
+                      field.pieceContainer.add(puyo);
+                  }
               };
               
               drawPiece(positions.main, data.colors.main);
@@ -3365,52 +3600,62 @@
           }
 
           collapseMyField() {
-              const duration = 1500;
+              console.log('=== collapseMyField (second definition) CALLED ===');
+              const duration = 2000;
+              const fallDistance = 1500;
               
-              // 画面振動なし、単純に下に落下させるが、少しバラバラ感 (=ランダムな横移動や回転) を出す
-              const fallDistance = 800;
+              const frameElements = [];
+              const puyoElements = [];
               
-              const elementsToDrop = [];
-              
-              // 枠
-              if (this.myFieldBorder) elementsToDrop.push(this.myFieldBorder);
-              
-              // 背景要素
+              // 枠と背景
+              if (this.myFieldBorder) frameElements.push(this.myFieldBorder);
               this.children.list.forEach(child => {
                   if (child.getData && (child.getData('myField') || child.getData('myFieldBorder'))) {
-                      elementsToDrop.push(child);
+                      frameElements.push(child);
                   }
               });
               
-              // ぷよ
+              // グリッド内のぷよを明示的に収集
               for (let row = 0; row < ROWS; row++) {
                   for (let col = 0; col < COLS; col++) {
-                      if (this.grid[row][col]) {
-                          elementsToDrop.push(this.grid[row][col]);
+                      if (this.grid[row][col] && this.grid[row][col].active) {
+                          puyoElements.push(this.grid[row][col]);
                       }
                   }
               }
               
-              // UI要素も落とす（オプション）
+              // UI要素
               const uiElements = [this.scoreText, this.chainText, this.nextContainer, this.garbageGaugeBg, this.garbageGauge, this.garbageCountText, this.comboText];
               uiElements.forEach(el => {
-                 if(el) elementsToDrop.push(el);
+                 if(el) frameElements.push(el);
               });
               
-              // まとめて落下
-              elementsToDrop.forEach((element) => {
-                  if (!element) return;
-                  this.tweens.add({
-                      targets: element,
-                      y: `+=${fallDistance}`,
-                      angle: Phaser.Math.Between(-10, 10), // 少しだけ傾ける
-                      duration: duration,
-                      ease: 'Cubic.easeIn',
-                      onComplete: () => {
-                          if (element && element.scene) element.destroy();
-                      }
+              console.log('Scattering - Frame elements:', frameElements.length, 'Puyos:', puyoElements.length);
+              
+              // 個別にランダムな横移動と回転を適用
+              const applyScatter = (targets) => {
+                  targets.forEach(element => {
+                      if (!element || !element.active) return;
+                      
+                      const vx = (Math.random() - 0.5) * 1000; // Random horizontal velocity
+                      const rot = (Math.random() - 0.5) * 60;  // Random rotation
+                      
+                      this.tweens.add({
+                          targets: element,
+                          props: {
+                              x: { value: element.x + vx, duration: duration, ease: 'Linear' },
+                              y: { value: element.y + fallDistance, duration: duration, ease: 'Cubic.easeIn' },
+                              angle: { value: (element.angle || 0) + rot, duration: duration, ease: 'Linear' }
+                          },
+                          onComplete: () => {
+                              if (element && element.active) element.destroy();
+                          }
+                      });
                   });
-              });
+              };
+              
+              applyScatter(frameElements);
+              applyScatter(puyoElements);
           }
 
           showMessage(text) {

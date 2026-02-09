@@ -83,7 +83,7 @@ async function sendRoomInfo(channel, roomCode) {
          return `**${p.name}**: ${p.isSpectator ? '👁️ Spectator' : (p.ready ? '✅ Ready' : '⏳ Waiting')}`;
     }).join('\n') || 'None';
 
-    const baseUrl = process.env.BASE_URL || 'https://puyopuyo-27ri.onrender.com'; 
+    const baseUrl = process.env.BASE_URL || 'http://localhost:3000'; 
     const gameUrl = `${baseUrl}?room=${roomCode}`;
 
     const embed = new EmbedBuilder()

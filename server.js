@@ -59,7 +59,7 @@ wss.on('connection', (ws) => {
 
       handleMessage(ws, data);
     } catch (e) {
-      console.error('Json parse error:', e);
+      console.error('Error handling message:', e);
     }
   });
 
@@ -236,6 +236,7 @@ function createRoom(ws, data) {
       garbageRate: 1.0,
       dropSpeed: 500,
       defeatTime: 10,
+      garbageDelay: 3,
       garbagePrediction: true, // デフォルトでON
     },
   };
@@ -353,15 +354,21 @@ function toggleReady(ws) {
 
   broadcastRoomState(room);
   discordBot.updateRoomInfo(ws.roomCode);
+ 
+  const allReady = Array.from(room.playerStates.values())
+    .filter(p => !p.isSpectator)
+    .every(p => p.ready);
 
-
-  const allReady = Array.from(room.playerStates.values()).every((p) => p.ready);
   if (allReady && room.players.length >= 2) {
     startGame(room);
   }
 }
 
 function startGame(room) {
+  if (room.resetTimeout) {
+    clearTimeout(room.resetTimeout);
+    room.resetTimeout = null;
+  }
   room.gameStarted = true;
   room.alivePlayers = room.players.map((p) => p.playerId);
 
@@ -621,7 +628,8 @@ function checkGameEnd(room) {
     }
 
 
-    setTimeout(() => {
+    if (room.resetTimeout) clearTimeout(room.resetTimeout);
+    room.resetTimeout = setTimeout(() => {
       room.gameStarted = false;
       room.alivePlayers = [];
       room.playerStates.forEach((state) => {
@@ -634,6 +642,7 @@ function checkGameEnd(room) {
       if (room.playerTargets) {
         room.playerTargets.clear();
       }
+      room.resetTimeout = null;
       broadcastRoomState(room);
       discordBot.updateRoomInfo(room.code);
     }, 3000);
@@ -661,7 +670,8 @@ function checkGameEnd(room) {
       );
     });
 
-    setTimeout(() => {
+    if (room.resetTimeout) clearTimeout(room.resetTimeout);
+    room.resetTimeout = setTimeout(() => {
       room.gameStarted = false;
       room.alivePlayers = [];
       room.playerStates.forEach((state) => {
@@ -674,6 +684,7 @@ function checkGameEnd(room) {
       if (room.playerTargets) {
         room.playerTargets.clear();
       }
+      room.resetTimeout = null;
       broadcastRoomState(room);
       discordBot.updateRoomInfo(room.code);
     }, 3000);

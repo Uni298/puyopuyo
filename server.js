@@ -203,6 +203,9 @@ function handleMessage(ws, data) {
     case "return_to_lobby":
       handleReturnToLobby(ws);
       break;
+    case "skill_activated":
+      handleSkillActivated(ws, data);
+      break;
   }
 }
 
@@ -238,6 +241,10 @@ function createRoom(ws, data) {
       defeatTime: 10,
       garbageDelay: 3,
       garbagePrediction: true, // デフォルトでON
+      skillEnabled: true, // スキル機能のON/OFF
+      skillRequiredCount: 20, // スキル発動に必要なぷよ消去数
+      animationMode: 'normal', // アニメーション通常 or クイックドロップ
+      garbageMode: 'drop', // おじゃま出現方法: drop(落下) or raise(上昇)
     },
   };
 
@@ -707,6 +714,32 @@ function handleReturnToLobby(ws) {
         type: "force_return_lobby",
       }),
     );
+  });
+}
+
+function handleSkillActivated(ws, data) {
+  if (!ws.roomCode) return;
+
+  const room = rooms.get(ws.roomCode);
+  if (!room) return;
+
+  // スキルが無効な場合は何もしない
+  if (room.settings && room.settings.skillEnabled === false) return;
+
+  const playerState = room.playerStates.get(ws.playerId);
+  const playerName = playerState ? playerState.name : 'Unknown';
+
+  // 自分以外の全プレイヤーにスキル発動を通知（透明おじゃまぷよを送信）
+  room.players.forEach((player) => {
+    if (player.playerId !== ws.playerId) {
+      player.send(
+        JSON.stringify({
+          type: "skill_activated",
+          fromPlayerId: ws.playerId,
+          fromPlayerName: playerName,
+        }),
+      );
+    }
   });
 }
 

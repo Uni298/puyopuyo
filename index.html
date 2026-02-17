@@ -223,6 +223,27 @@
         from { transform: translateX(120%); opacity: 0; }
         to { transform: translateX(0); opacity: 1; }
       }
+      #threshold-recorder-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 3000;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        color: white;
+        font-size: 24px;
+        font-family: 'JetBrains Mono', monospace;
+      }
+      #recorder-canvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+      }
     </style>
   </head>
   <body>
@@ -249,6 +270,36 @@
         />
         <br />
         <button class="btn" onclick="joinRoom()">ルームに参加</button>
+        <br />
+        <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 12px; border: 1px solid #e1e4e8;">
+          <p style="font-size: 13px; color: #666; margin: 0;">スワイプ設定はルーム入室後に変更できます</p>
+        </div>
+      </div>
+
+      <!-- スワイプ設定モーダル -->
+      <div id="settingsModal" class="hidden" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(255, 255, 255, 0.98); padding: 40px; border-radius: 20px; text-align: center; color: #333; z-index: 1001; min-width: 400px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2); border: 1px solid rgba(0, 0, 0, 0.1);">
+          <h2>スワイプ設定</h2>
+          <p style="font-size: 14px; color: #666; margin: 15px 0;">円の境界をドラッグして距離のしきい値を、<br>区切り線をドラッグして各方向の角度を調整します。</p>
+          
+          <div id="swipe-visualizer" style="position: relative; width: 250px; height: 250px; margin: 20px auto; border-radius: 50%; cursor: pointer; touch-action: none;">
+              <canvas id="swipeCanvas" width="250" height="250" style="background: #f0f2f5; border-radius: 50%; border: 1px solid #e1e4e8;"></canvas>
+          </div>
+          
+          <div style="font-size: 16px; font-weight: bold; margin-bottom: 10px;">
+              しきい値: <span id="thresholdValue">20</span>px
+          </div>
+          <button class="btn" onclick="startThresholdRecording()" style="font-size: 14px; padding: 10px 20px; margin-bottom: 10px;">スワイプ距離をセット</button>
+          <div id="angleValues" style="font-size: 12px; color: #555; display: grid; grid-template-columns: 1fr 1fr; gap: 5px; max-width: 300px; margin: 0 auto 20px;">
+              <span>右/下: <span id="boundaryRD">45</span>°</span>
+              <span>下/左: <span id="boundaryDL">135</span>°</span>
+              <span>左/上: <span id="boundaryLU">225</span>°</span>
+              <span>上/右: <span id="boundaryUR">315</span>°</span>
+          </div>
+
+          <div>
+              <button class="btn" onclick="saveSwipePreset()" style="background: #2ecc71;">プリセットを保存</button>
+              <button class="btn" onclick="closeSettingsModal()" style="background: #e74c3c;">閉じる</button>
+          </div>
       </div>
 
       <div id="waitingRoom" class="hidden">
@@ -270,6 +321,20 @@
                 <label for="dropSpeed">落下速度: </label>
                 <input type="number" id="dropSpeed" min="50" max="2000" step="50" value="500" style="width: 60px;"> ms
             </div>
+            <div style="margin-bottom: 8px;">
+                <label for="animationMode">アニメーション: </label>
+                <select id="animationMode" style="width: 120px;">
+                    <option value="normal">通常</option>
+                    <option value="quick">クイックドロップ</option>
+                </select>
+            </div>
+            <div style="margin-bottom: 8px;">
+                <label for="garbageMode">おじゃま出現: </label>
+                <select id="garbageMode" style="width: 120px;">
+                    <option value="drop">落下（通常）</option>
+                    <option value="raise">上昇（テトリス風）</option>
+                </select>
+            </div>
             <div>
                 <label for="defeatTime">敗北猶予: </label>
                 <input type="number" id="defeatTime" min="3" max="60" step="1" value="10" style="width: 60px;"> 秒
@@ -279,13 +344,44 @@
                 <input type="number" id="garbageDelay" min="0" max="10" step="1" value="3" style="width: 60px;"> 秒
             </div>
             <div style="margin-top: 8px;">
-                <!-- Prediction checkbox removed -->
-            </div>
-            <div style="margin-top: 8px;">
                 <label for="disableAnimations">
                     <input type="checkbox" id="disableAnimations">
                     アニメーション無効化
                 </label>
+            </div>
+            <div style="margin-top: 8px;">
+                <label for="enableQuickSwipe">
+                    <input type="checkbox" id="enableQuickSwipe">
+                    素早くスワイプで端に移動
+                </label>
+                <select id="quickSwipeThreshold" style="margin-left: 10px; width: 80px;">
+                    <option value="150">150px</option>
+                    <option value="200" selected>200px</option>
+                    <option value="250">250px</option>
+                    <option value="300">300px</option>
+                    <option value="350">350px</option>
+                    <option value="400">400px</option>
+                </select>
+            </div>
+            <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #e1e4e8;">
+                <h4 style="margin-bottom: 10px; color: #2c3e50;">スキル設定</h4>
+                <div style="margin-bottom: 8px;">
+                    <label for="skillEnabled">
+                        <input type="checkbox" id="skillEnabled" checked>
+                        スキルを有効にする
+                    </label>
+                </div>
+                <div style="margin-bottom: 8px;">
+                    <label for="skillRequiredCount">発動に必要な個数: </label>
+                    <select id="skillRequiredCount" style="width: 80px;">
+                        <option value="10">10個</option>
+                        <option value="15">15個</option>
+                        <option value="20" selected>20個</option>
+                        <option value="25">25個</option>
+                        <option value="30">30個</option>
+                        <option value="50">50個</option>
+                    </select>
+                </div>
             </div>
         </div>
 
@@ -294,6 +390,7 @@
         </button>
         <br />
         <button class="btn" onclick="leaveRoom()">退出</button>
+        <button class="btn" onclick="openSettingsModal()" style="background: #6c757d;">スワイプ設定</button>
         
         <!-- チャット -->
         <div style="margin-top: 20px; background: rgba(255,255,255,0.1); padding: 15px; border-radius: 10px;">
@@ -304,6 +401,20 @@
             <button onclick="sendChat()" style="padding: 8px 15px; background: #3498db; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 13px;">送信</button>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- スワイプ距離測定オーバーレイ -->
+    <div id="thresholdRecorderOverlay" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.7); z-index: 3000; display: flex; flex-direction: column; justify-content: center; align-items: center; color: white; font-size: 24px; font-family: 'JetBrains Mono', monospace; touch-action: none;">
+      <div style="text-align: center; margin-bottom: 30px;">
+        <p style="font-size: 28px; margin-bottom: 10px;">スワイプ距離を設定</p>
+        <p style="font-size: 16px; color: #ccc;">画面をドラッグして、スワイプと判定する距離を決めてください</p>
+        <p style="font-size: 14px; color: #999; margin-top: 10px;">現在の距離: <span id="recorderDistance" style="color: #4a90e2; font-weight: bold;">0</span> px</p>
+      </div>
+      <canvas id="recorderCanvas" style="border: 2px solid rgba(255, 255, 255, 0.3); border-radius: 8px; background: rgba(255, 255, 255, 0.1);"></canvas>
+      <div style="margin-top: 30px; display: flex; gap: 15px;">
+        <button class="btn" onclick="confirmThresholdRecording()" style="background: #2ecc71; font-size: 16px; padding: 12px 30px;">この距離で設定</button>
+        <button class="btn" onclick="cancelThresholdRecording()" style="background: #e74c3c; font-size: 16px; padding: 12px 30px;">キャンセル</button>
       </div>
     </div>
 
@@ -331,6 +442,578 @@
       let myPlayerId = null;
       let myReady = false;
       let allPlayers = [];
+
+      // スワイプ設定関連
+      const PRESETS_STORAGE_KEY = 'puyoSwipePresets';
+      let swipeSettings = {
+          threshold: 20, // Default value
+          boundaries: [45, 135, 225, 315] // R/D, D/L, L/U, U/R
+      };
+      let settingsModalOpen = false;
+
+      function openSettingsModal() {
+          // ロビーに入っていない場合は設定できない
+          if (!currentRoom) {
+              showNotification('ルームに入室後に設定できます', 3000);
+              return;
+          }
+          
+          const scene = game && game.scene.isActive('MultiplayerPuyoPuyo') ? game.scene.scenes[0] : null;
+          if (scene) {
+              swipeSettings.threshold = scene.swipeThreshold;
+              swipeSettings.boundaries = scene.swipeBoundaries;
+          }
+          document.getElementById('settingsModal').classList.remove('hidden');
+          document.getElementById('thresholdValue').textContent = swipeSettings.threshold;
+          
+          if (swipeSettings.boundaries) {
+            document.getElementById('boundaryRD').textContent = swipeSettings.boundaries[0];
+            document.getElementById('boundaryDL').textContent = swipeSettings.boundaries[1];
+            document.getElementById('boundaryLU').textContent = swipeSettings.boundaries[2];
+            document.getElementById('boundaryUR').textContent = swipeSettings.boundaries[3];
+          }
+
+          settingsModalOpen = true;
+          initSwipeVisualizer();
+      }
+
+      // スワイプ距離測定関連の変数
+      let recorderCanvas, recorderCtx;
+      let recorderStartX = 0, recorderStartY = 0;
+      let recorderCurrentX = 0, recorderCurrentY = 0;
+      let recorderIsDragging = false;
+      let recorderRecordedDistance = 0;
+
+      function startThresholdRecording() {
+          const overlay = document.getElementById('thresholdRecorderOverlay');
+          overlay.classList.remove('hidden');
+          
+          // Canvasのセットアップ
+          recorderCanvas = document.getElementById('recorderCanvas');
+          const size = Math.min(window.innerWidth * 0.8, window.innerHeight * 0.5, 400);
+          recorderCanvas.width = size;
+          recorderCanvas.height = size;
+          recorderCtx = recorderCanvas.getContext('2d');
+          
+          // 初期状態を描画
+          drawRecorderCanvas();
+          
+          // イベントリスナーの設定
+          setupRecorderEvents();
+      }
+
+      function setupRecorderEvents() {
+          recorderCanvas.addEventListener('pointerdown', onRecorderPointerDown);
+          recorderCanvas.addEventListener('pointermove', onRecorderPointerMove);
+          recorderCanvas.addEventListener('pointerup', onRecorderPointerUp);
+          recorderCanvas.addEventListener('pointerleave', onRecorderPointerUp);
+          
+          // タッチイベントもサポート
+          recorderCanvas.addEventListener('touchstart', onRecorderTouchStart, { passive: false });
+          recorderCanvas.addEventListener('touchmove', onRecorderTouchMove, { passive: false });
+          recorderCanvas.addEventListener('touchend', onRecorderPointerUp);
+      }
+
+      function onRecorderPointerDown(e) {
+          e.preventDefault();
+          const rect = recorderCanvas.getBoundingClientRect();
+          recorderStartX = e.clientX - rect.left;
+          recorderStartY = e.clientY - rect.top;
+          recorderCurrentX = recorderStartX;
+          recorderCurrentY = recorderStartY;
+          recorderIsDragging = true;
+          recorderRecordedDistance = 0;
+          drawRecorderCanvas();
+      }
+
+      function onRecorderTouchStart(e) {
+          e.preventDefault();
+          const rect = recorderCanvas.getBoundingClientRect();
+          const touch = e.touches[0];
+          recorderStartX = touch.clientX - rect.left;
+          recorderStartY = touch.clientY - rect.top;
+          recorderCurrentX = recorderStartX;
+          recorderCurrentY = recorderStartY;
+          recorderIsDragging = true;
+          recorderRecordedDistance = 0;
+          drawRecorderCanvas();
+      }
+
+      function onRecorderPointerMove(e) {
+          if (!recorderIsDragging) return;
+          e.preventDefault();
+          const rect = recorderCanvas.getBoundingClientRect();
+          recorderCurrentX = e.clientX - rect.left;
+          recorderCurrentY = e.clientY - rect.top;
+          updateRecorderDistance();
+          drawRecorderCanvas();
+      }
+
+      function onRecorderTouchMove(e) {
+          if (!recorderIsDragging) return;
+          e.preventDefault();
+          const rect = recorderCanvas.getBoundingClientRect();
+          const touch = e.touches[0];
+          recorderCurrentX = touch.clientX - rect.left;
+          recorderCurrentY = touch.clientY - rect.top;
+          updateRecorderDistance();
+          drawRecorderCanvas();
+      }
+
+      function onRecorderPointerUp() {
+          recorderIsDragging = false;
+      }
+
+      function updateRecorderDistance() {
+          const dx = recorderCurrentX - recorderStartX;
+          const dy = recorderCurrentY - recorderStartY;
+          recorderRecordedDistance = Math.round(Math.sqrt(dx * dx + dy * dy));
+          document.getElementById('recorderDistance').textContent = recorderRecordedDistance;
+      }
+
+      function drawRecorderCanvas() {
+          const w = recorderCanvas.width;
+          const h = recorderCanvas.height;
+          const centerX = w / 2;
+          const centerY = h / 2;
+          
+          recorderCtx.clearRect(0, 0, w, h);
+          
+          // グリッド線を描画
+          recorderCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+          recorderCtx.lineWidth = 1;
+          const gridSize = 20;
+          for (let x = 0; x <= w; x += gridSize) {
+              recorderCtx.beginPath();
+              recorderCtx.moveTo(x, 0);
+              recorderCtx.lineTo(x, h);
+              recorderCtx.stroke();
+          }
+          for (let y = 0; y <= h; y += gridSize) {
+              recorderCtx.beginPath();
+              recorderCtx.moveTo(0, y);
+              recorderCtx.lineTo(w, y);
+              recorderCtx.stroke();
+          }
+          
+          if (recorderIsDragging || recorderRecordedDistance > 0) {
+              // ドラッグ線を描画
+              recorderCtx.beginPath();
+              recorderCtx.moveTo(recorderStartX, recorderStartY);
+              recorderCtx.lineTo(recorderCurrentX, recorderCurrentY);
+              recorderCtx.strokeStyle = '#4a90e2';
+              recorderCtx.lineWidth = 3;
+              recorderCtx.stroke();
+              
+              // 開始点を描画
+              recorderCtx.beginPath();
+              recorderCtx.arc(recorderStartX, recorderStartY, 8, 0, Math.PI * 2);
+              recorderCtx.fillStyle = '#2ecc71';
+              recorderCtx.fill();
+              
+              // 終了点を描画
+              recorderCtx.beginPath();
+              recorderCtx.arc(recorderCurrentX, recorderCurrentY, 8, 0, Math.PI * 2);
+              recorderCtx.fillStyle = '#e74c3c';
+              recorderCtx.fill();
+              
+              // 距離の円を描画
+              recorderCtx.beginPath();
+              recorderCtx.arc(recorderStartX, recorderStartY, recorderRecordedDistance, 0, Math.PI * 2);
+              recorderCtx.strokeStyle = 'rgba(74, 144, 226, 0.3)';
+              recorderCtx.lineWidth = 2;
+              recorderCtx.setLineDash([5, 5]);
+              recorderCtx.stroke();
+              recorderCtx.setLineDash([]);
+              
+              // 距離ラベルを描画
+              const midX = (recorderStartX + recorderCurrentX) / 2;
+              const midY = (recorderStartY + recorderCurrentY) / 2;
+              recorderCtx.fillStyle = '#fff';
+              recorderCtx.font = 'bold 16px "JetBrains Mono"';
+              recorderCtx.textAlign = 'center';
+              recorderCtx.textBaseline = 'middle';
+              recorderCtx.fillText(recorderRecordedDistance + 'px', midX, midY - 15);
+          } else {
+              // 初期状態: 中心に案内を表示
+              recorderCtx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+              recorderCtx.font = '16px "JetBrains Mono"';
+              recorderCtx.textAlign = 'center';
+              recorderCtx.textBaseline = 'middle';
+              recorderCtx.fillText('ここをタッチしてドラッグ', centerX, centerY);
+          }
+      }
+
+      function confirmThresholdRecording() {
+          if (recorderRecordedDistance > 0) {
+              // 最小値と最大値を制限
+              const minThreshold = 10;
+              const maxThreshold = 200;
+              const newThreshold = Math.max(minThreshold, Math.min(maxThreshold, recorderRecordedDistance));
+              
+              swipeSettings.threshold = newThreshold;
+              
+              // ゲームに適用
+              if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
+                  const scene = game.scene.scenes[0];
+                  scene.swipeThreshold = newThreshold;
+              }
+              
+              // 設定モーダルを更新
+              document.getElementById('thresholdValue').textContent = newThreshold;
+              
+              // ビジュアライザーを更新
+              initSwipeVisualizer();
+              
+              showNotification(`スワイプ距離を ${newThreshold}px に設定しました`, 3000);
+          }
+          closeThresholdRecorder();
+      }
+
+      function cancelThresholdRecording() {
+          closeThresholdRecorder();
+      }
+
+      function closeThresholdRecorder() {
+          document.getElementById('thresholdRecorderOverlay').classList.add('hidden');
+          recorderIsDragging = false;
+          recorderRecordedDistance = 0;
+          
+          // イベントリスナーを削除
+          recorderCanvas.removeEventListener('pointerdown', onRecorderPointerDown);
+          recorderCanvas.removeEventListener('pointermove', onRecorderPointerMove);
+          recorderCanvas.removeEventListener('pointerup', onRecorderPointerUp);
+          recorderCanvas.removeEventListener('pointerleave', onRecorderPointerUp);
+          recorderCanvas.removeEventListener('touchstart', onRecorderTouchStart);
+          recorderCanvas.removeEventListener('touchmove', onRecorderTouchMove);
+          recorderCanvas.removeEventListener('touchend', onRecorderPointerUp);
+      }
+
+
+
+
+
+
+
+      function closeSettingsModal() {
+          document.getElementById('settingsModal').classList.add('hidden');
+          if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
+              const scene = game.scene.scenes[0];
+              scene.swipeThreshold = swipeSettings.threshold;
+              scene.swipeBoundaries = swipeSettings.boundaries;
+              showNotification(`スワイプ設定を更新しました`, 3000);
+          }
+          settingsModalOpen = false;
+      }
+
+      function initSwipeVisualizer() {
+          let currentCanvas = document.getElementById('swipeCanvas'); // Use a different name for clarity
+          if (!currentCanvas) return;
+
+          // Clone and replace to clear old listeners and get a fresh element
+          const newCanvasElement = currentCanvas.cloneNode(true);
+          currentCanvas.parentNode.replaceChild(newCanvasElement, currentCanvas);
+          currentCanvas = newCanvasElement; // Now currentCanvas refers to the new element
+
+          const ctx = currentCanvas.getContext('2d'); // Use the new element's context
+          
+          const valueSpan = document.getElementById('thresholdValue');
+          const boundarySpans = {
+            rd: document.getElementById('boundaryRD'),
+            dl: document.getElementById('boundaryDL'),
+            lu: document.getElementById('boundaryLU'),
+            ur: document.getElementById('boundaryUR'),
+          };
+
+          const centerX = currentCanvas.width / 2;
+          const centerY = currentCanvas.height / 2;
+          const maxRadius = centerX - 10;
+          const handleRadius = 8;
+          const minAngleSeparation = 15;
+
+          let dragTarget = null; // 'radius-handle', 'handle-0', 'handle-1', ...
+
+          function draw() {
+              ctx.clearRect(0, 0, currentCanvas.width, currentCanvas.height);
+              
+              const radius = swipeSettings.threshold;
+
+              // Fill sectors
+              const sectorColors = ['rgba(255, 99, 71, 0.1)', 'rgba(52, 152, 219, 0.1)', 'rgba(241, 196, 15, 0.1)', 'rgba(46, 204, 113, 0.1)']; // R, D, L, U
+              const labels = ["右", "ハードドロップ", "左", "回転"]; // Updated labels
+              
+              let startAngle = swipeSettings.boundaries[3]; // U/R boundary
+              for(let i = 0; i < 4; i++) {
+                const endAngle = swipeSettings.boundaries[i];
+                
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                const startRad = startAngle * Math.PI / 180;
+                const endRad = endAngle * Math.PI / 180;
+                ctx.arc(centerX, centerY, maxRadius + 5, startRad, endRad);
+                ctx.closePath();
+                ctx.fillStyle = sectorColors[i];
+                ctx.fill();
+
+                // Draw labels
+                let midAngle = (startAngle + endAngle) / 2;
+                if (startAngle > endAngle) { // Handles wrap-around 0/360
+                    midAngle = (startAngle + endAngle + 360) / 2;
+                    if (midAngle >= 360) midAngle -= 360;
+                }
+
+                const labelRad = midAngle * Math.PI / 180;
+                
+                ctx.fillStyle = '#333';
+                ctx.font = '16px "JetBrains Mono"';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                
+                let labelX = centerX + Math.cos(labelRad) * (radius * 0.6);
+                let labelY = centerY + Math.sin(labelRad) * (radius * 0.6);
+
+                // Adjust label position if radius is too small to prevent overlapping center
+                if (radius < 60) {
+                    labelX = centerX + Math.cos(labelRad) * 60; // Minimum distance for label
+                    labelY = centerY + Math.sin(labelRad) * 60;
+                }
+                
+                ctx.fillText(labels[i], labelX, labelY);
+
+                startAngle = endAngle;
+              }
+
+
+              // Tap circle
+              ctx.beginPath();
+              ctx.arc(centerX, centerY, 5, 0, 2 * Math.PI);
+              ctx.fillStyle = '#3498db';
+              ctx.fill();
+              
+              // Threshold circle (the draggable boundary)
+              ctx.beginPath();
+              ctx.arc(centerX, centerY, radius, '#3498db', 0, 2 * Math.PI);
+              ctx.setLineDash([5, 5]);
+              ctx.strokeStyle = '#3498db';
+              ctx.lineWidth = 2;
+              ctx.stroke();
+              ctx.setLineDash([]);
+
+              // Threshold handle
+              const rHandleX = centerX;
+              const rHandleY = centerY - radius;
+              ctx.beginPath();
+              ctx.arc(rHandleX, rHandleY, handleRadius, 0, 2 * Math.PI);
+              ctx.fillStyle = '#3498db';
+              ctx.fill();
+              
+              // Boundary lines and handles
+              swipeSettings.boundaries.forEach((angle, i) => {
+                  const rad = angle * Math.PI / 180;
+                  // Extend boundary lines to maxRadius
+                  const endX = centerX + Math.cos(rad) * maxRadius;
+                  const endY = centerY + Math.sin(rad) * maxRadius;
+
+                  // Line
+                  ctx.beginPath();
+                  ctx.moveTo(centerX, centerY);
+                  ctx.lineTo(endX, endY);
+                  ctx.strokeStyle = 'rgba(44, 62, 80, 0.5)';
+                  ctx.lineWidth = 1;
+                  ctx.stroke();
+
+                  // Handle (on the threshold radius)
+                  const handleX = centerX + Math.cos(rad) * radius;
+                  const handleY = centerY + Math.sin(rad) * radius;
+                  ctx.beginPath();
+                  ctx.arc(handleX, handleY, handleRadius, 0, 2 * Math.PI);
+                  ctx.fillStyle = '#2c3e50';
+                  ctx.fill();
+              });
+
+              ctx.fillStyle = '#95a5a6';
+              ctx.font = '12px "JetBrains Mono"';
+              ctx.textAlign = 'center';
+              ctx.fillText('TAP', centerX, centerY + 5);
+          }
+          
+          function updateUI() {
+            valueSpan.textContent = swipeSettings.threshold;
+            boundarySpans.rd.textContent = swipeSettings.boundaries[0];
+            boundarySpans.dl.textContent = swipeSettings.boundaries[1];
+            boundarySpans.lu.textContent = swipeSettings.boundaries[2];
+            boundarySpans.ur.textContent = swipeSettings.boundaries[3];
+          }
+          
+          // Returns distance from point C to line segment AB
+          function pointToSegmentDistance(C, A, B) {
+              const AB = { x: B.x - A.x, y: B.y - A.y };
+              const AC = { x: C.x - A.x, y: C.y - A.y };
+              const lenSq = AB.x * AB.x + AB.y * AB.y;
+              if (lenSq === 0) return Math.sqrt(AC.x * AC.x + AC.y * AC.y); // A === B
+
+              let t = (AC.x * AB.x + AC.y * AB.y) / lenSq;
+              t = Math.max(0, Math.min(1, t)); // Clamp to segment
+
+              const closestPoint = { x: A.x + t * AB.x, y: A.y + t * AB.y };
+              const dC = { x: C.x - closestPoint.x, y: C.y - closestPoint.y };
+              return Math.sqrt(dC.x * dC.x + dC.y * dC.y);
+          }
+
+          function getInteractionTarget(x, y) {
+              const radius = swipeSettings.threshold;
+
+              // Check threshold handle
+              const rHandleX = centerX;
+              const rHandleY = centerY - radius;
+              if (Math.sqrt(Math.pow(x - rHandleX, 2) + Math.pow(y - rHandleY, 2)) < handleRadius + 5) {
+                return 'radius-handle';
+              }
+
+              // Check boundary lines
+              for(let i = 0; i < 4; i++) {
+                const angle = swipeSettings.boundaries[i];
+                const rad = angle * Math.PI / 180;
+                const lineEnd = { 
+                    x: centerX + Math.cos(rad) * maxRadius,
+                    y: centerY + Math.sin(rad) * maxRadius
+                };
+                
+                if (pointToSegmentDistance({x, y}, {x: centerX, y: centerY}, lineEnd) < handleRadius) {
+                    return `handle-${i}`;
+                }
+              }
+
+              return null;
+          }
+
+          function handleInteraction(e) {
+              if (!dragTarget) return;
+              e.preventDefault();
+              const rect = currentCanvas.getBoundingClientRect();
+              const x = (e.clientX || e.touches[0].clientX) - rect.left;
+              const y = (e.clientY || e.touches[0].clientY) - rect.top;
+
+              if (dragTarget === 'radius-handle') {
+                  const dist = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
+                  swipeSettings.threshold = Math.round(Math.max(10, Math.min(dist, maxRadius)));
+              } else if (dragTarget.startsWith('handle-')) {
+                  const handleIndex = parseInt(dragTarget.split('-')[1]);
+                  
+                  const dx = x - centerX;
+                  const dy = y - centerY;
+                  let newAngle = Math.atan2(dy, dx) * 180 / Math.PI;
+                  if (newAngle < 0) newAngle += 360;
+                  newAngle = Math.round(newAngle);
+
+                  const prevIndex = (handleIndex + 3) % 4;
+                  const nextIndex = (handleIndex + 1) % 4;
+
+                  let prevBoundary = swipeSettings.boundaries[prevIndex];
+                  let nextBoundary = swipeSettings.boundaries[nextIndex];
+                  
+                  // Normalize angles to handle wrap-around for comparison
+                  let currentPrev = prevBoundary;
+                  let currentNext = nextBoundary;
+                  let currentNewAngle = newAngle;
+
+                  if (currentPrev > currentNext) { // If next boundary wraps around (e.g., 315 -> 45)
+                      if (currentNewAngle < currentPrev && currentNewAngle < currentNext) {
+                          currentNewAngle += 360; // Adjust new angle to be in the "higher" range
+                      }
+                      currentNext += 360; // Adjust next boundary to be in the "higher" range for comparison
+                  }
+                  
+                  // Check if the new angle is within the valid range (respecting min separation)
+                  if (currentNewAngle > currentPrev + minAngleSeparation && currentNewAngle < currentNext - minAngleSeparation) {
+                    swipeSettings.boundaries[handleIndex] = newAngle % 360;
+                  }
+              }
+              
+              updateUI();
+              draw();
+          }
+          
+          const startDragging = (e) => {
+              const rect = currentCanvas.getBoundingClientRect();
+              const x = (e.clientX || e.touches[0].clientX) - rect.left;
+              const y = (e.clientY || e.touches[0].clientY) - rect.top;
+              dragTarget = getInteractionTarget(x, y);
+              if(dragTarget) {
+                e.preventDefault();
+                currentCanvas.addEventListener('mousemove', handleInteraction);
+                currentCanvas.addEventListener('touchmove', handleInteraction, { passive: false });
+              }
+          }
+
+          const stopDragging = () => { 
+              dragTarget = null;
+              currentCanvas.removeEventListener('mousemove', handleInteraction);
+              currentCanvas.removeEventListener('touchmove', handleInteraction);
+          };
+
+          // Attach listeners to the new canvas element
+          currentCanvas.addEventListener('mousedown', startDragging);
+          currentCanvas.addEventListener('touchstart', startDragging, { passive: false });
+          window.addEventListener('mouseup', stopDragging);
+          window.addEventListener('touchend', stopDragging);
+
+          updateUI();
+          draw();
+      }
+
+      function saveSwipePreset() {
+          const playerName = document.getElementById('playerNameInput').value.trim();
+          if (!playerName) {
+              alert('プリセットを保存するには名前を入力してください。');
+              return;
+          }
+          try {
+              const presets = JSON.parse(localStorage.getItem(PRESETS_STORAGE_KEY) || '{}');
+              presets[playerName] = { 
+                swipeThreshold: swipeSettings.threshold,
+                swipeBoundaries: swipeSettings.boundaries
+              };
+              localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(presets));
+              showNotification(`'${playerName}' のプリセットを保存しました`, 3000);
+          } catch (e) {
+              console.error('Failed to save preset:', e);
+              alert('プリセットの保存に失敗しました。');
+          }
+      }
+
+      function loadSwipePreset(playerName) {
+          if (!playerName) return;
+          try {
+              const presets = JSON.parse(localStorage.getItem(PRESETS_STORAGE_KEY) || '{}');
+              const preset = presets[playerName];
+              if (preset) {
+                  if (typeof preset.swipeThreshold === 'number') {
+                    swipeSettings.threshold = preset.swipeThreshold;
+                  }
+                  if (Array.isArray(preset.swipeBoundaries) && preset.swipeBoundaries.length === 4) {
+                    swipeSettings.boundaries = preset.swipeBoundaries;
+                  } else {
+                    // backward compatibility or default
+                    swipeSettings.boundaries = [45, 135, 225, 315];
+                  }
+
+                  const scene = game && game.scene.isActive('MultiplayerPuyoPuyo') ? game.scene.scenes[0] : null;
+                  if (scene) {
+                      scene.swipeThreshold = swipeSettings.threshold;
+                      scene.swipeBoundaries = swipeSettings.boundaries;
+                  }
+
+                  if (settingsModalOpen) {
+                      updateUI();
+                      initSwipeVisualizer();
+                  }
+                  showNotification(`'${playerName}' のプリセットを読み込みました`, 3000);
+              }
+          } catch (e) {
+              console.error('Failed to load preset:', e);
+          }
+      }
 
       function copyDiscordCommand() {
           if (!currentRoom) return;
@@ -396,33 +1079,44 @@
                   isHost = true;
                   showWaitingRoom(data.roomCode);
                   
-                  // ホスト権限UI更新
-                  const updateSettings = () => {
-                      if (ws && ws.readyState === WebSocket.OPEN) {
-                          ws.send(JSON.stringify({
-                              type: 'update_settings',
-                              settings: { 
-                                  garbageRate: parseFloat(document.getElementById('garbageRate').value),
-                                  dropSpeed: parseInt(document.getElementById('dropSpeed').value),
-                                  defeatTime: parseInt(document.getElementById('defeatTime').value),
-                                  garbageDelay: parseInt(document.getElementById('garbageDelay').value)
-                                  // garbagePrediction removed
-                              }
-                          }));
-                      }
-                  };
+                    // ホスト権限UI更新
+                    const updateSettings = () => {
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                             ws.send(JSON.stringify({
+                                 type: 'update_settings',
+                                     settings: { 
+                                         garbageRate: parseFloat(document.getElementById('garbageRate').value),
+                                         dropSpeed: parseInt(document.getElementById('dropSpeed').value),
+                                         defeatTime: parseInt(document.getElementById('defeatTime').value),
+                                         garbageDelay: parseInt(document.getElementById('garbageDelay').value),
+                                         skillEnabled: document.getElementById('skillEnabled').checked,
+                                         skillRequiredCount: parseInt(document.getElementById('skillRequiredCount').value),
+                                         animationMode: document.getElementById('animationMode').value,
+                                         garbageMode: document.getElementById('garbageMode').value
+                                     }
+                             }));
+                        }
+                    };
 
-                  document.getElementById('garbageRate').disabled = false;
-                  document.getElementById('dropSpeed').disabled = false;
-                  document.getElementById('defeatTime').disabled = false;
-                  // garbagePrediction disabled false removed
-                  
-                  document.getElementById('garbageRate').onchange = updateSettings;
-                  document.getElementById('dropSpeed').onchange = updateSettings;
-                  document.getElementById('defeatTime').onchange = updateSettings;
-                  document.getElementById('garbageDelay').onchange = updateSettings;
-                  // document.getElementById('garbagePrediction').onchange = updateSettings;
-                  break;
+                    document.getElementById('garbageRate').disabled = false;
+                    document.getElementById('dropSpeed').disabled = false;
+                    document.getElementById('defeatTime').disabled = false;
+                    document.getElementById('garbageDelay').disabled = false;
+                     document.getElementById('skillEnabled').disabled = false;
+                     document.getElementById('skillRequiredCount').disabled = false;
+                     document.getElementById('animationMode').disabled = false;
+                     document.getElementById('garbageMode').disabled = false;
+                    
+                    document.getElementById('garbageRate').onchange = updateSettings;
+                    document.getElementById('dropSpeed').onchange = updateSettings;
+                    document.getElementById('defeatTime').onchange = updateSettings;
+                     document.getElementById('garbageDelay').onchange = updateSettings;
+                     document.getElementById('skillEnabled').onchange = updateSettings;
+                     document.getElementById('skillRequiredCount').onchange = updateSettings;
+                     document.getElementById('animationMode').onchange = updateSettings;
+                     document.getElementById('garbageMode').onchange = updateSettings;
+                    // document.getElementById('garbagePrediction').onchange = updateSettings;
+                   break;
 
               case 'room_joined':
                   currentRoom = data.roomCode;
@@ -449,82 +1143,119 @@
                       document.getElementById('status').textContent = `${data.players.filter(p => p.ready).length}/${data.players.length} 人準備完了`;
                   }
                   
-                  // 設定反映
-                  if (data.settings) {
-                      const garbageInput = document.getElementById('garbageRate');
-                      const dropInput = document.getElementById('dropSpeed');
-                      const defeatInput = document.getElementById('defeatTime');
-                      const delayInput = document.getElementById('garbageDelay');
-                      // predictionInput removed
-                      
-                      if (document.activeElement !== garbageInput) garbageInput.value = data.settings.garbageRate;
-                      if (document.activeElement !== dropInput) dropInput.value = data.settings.dropSpeed || 500;
-                      if (document.activeElement !== defeatInput) defeatInput.value = data.settings.defeatTime || 10;
-                      if (document.activeElement !== delayInput) delayInput.value = data.settings.garbageDelay !== undefined ? data.settings.garbageDelay : 3;
-                      // predictionInput reference removed
-                      
-                      // ホスト以外は無効化
-                      const isMyHost = (data.hostId === myPlayerId);
-                      garbageInput.disabled = !isMyHost;
-                      dropInput.disabled = !isMyHost;
-                      defeatInput.disabled = !isMyHost;
-                      delayInput.disabled = !isMyHost;
-                      // garbagePrediction disabled logic removed
+                    // 設定反映
+                    if (data.settings) {
+                        const garbageInput = document.getElementById('garbageRate');
+                        const dropInput = document.getElementById('dropSpeed');
+                        const defeatInput = document.getElementById('defeatTime');
+                         const delayInput = document.getElementById('garbageDelay');
+                         const skillEnabledInput = document.getElementById('skillEnabled');
+                         const skillRequiredInput = document.getElementById('skillRequiredCount');
+                         const animationModeInput = document.getElementById('animationMode');
+                         const garbageModeInput = document.getElementById('garbageMode');
+                         
+                        if (document.activeElement !== garbageInput) garbageInput.value = data.settings.garbageRate;
+                        if (document.activeElement !== dropInput) dropInput.value = data.settings.dropSpeed || 500;
+                        if (document.activeElement !== defeatInput) defeatInput.value = data.settings.defeatTime || 10;
+                        if (document.activeElement !== delayInput) delayInput.value = data.settings.garbageDelay !== undefined ? data.settings.garbageDelay : 3;
+                        if (document.activeElement !== skillEnabledInput) skillEnabledInput.checked = data.settings.skillEnabled !== undefined ? data.settings.skillEnabled : true;
+                        if (document.activeElement !== skillRequiredInput) skillRequiredInput.value = data.settings.skillRequiredCount || 20;
+                        if (document.activeElement !== animationModeInput) animationModeInput.value = data.settings.animationMode || 'normal';
+                        if (document.activeElement !== garbageModeInput) garbageModeInput.value = data.settings.garbageMode || 'drop';
+                        
+                        // ホスト以外は無効化
+                        const isMyHost = (data.hostId === myPlayerId);
+                        garbageInput.disabled = !isMyHost;
+                        dropInput.disabled = !isMyHost;
+                        defeatInput.disabled = !isMyHost;
+                        delayInput.disabled = !isMyHost;
+                        skillEnabledInput.disabled = !isMyHost;
+                        skillRequiredInput.disabled = !isMyHost;
+                        animationModeInput.disabled = !isMyHost;
+                        garbageModeInput.disabled = !isMyHost;
+                       // garbagePrediction disabled logic removed
 
-                      // Discordボタンの表示切替
-                      const discordBtn = document.getElementById('copyDiscordCmdBtn');
-                      if (discordBtn) {
-                          discordBtn.style.display = isMyHost ? 'inline-block' : 'none';
-                      }
-                      
-                      // ホスト権限更新
-                      if (isMyHost) {
-                          const updateSettings = () => {
-                              if (ws && ws.readyState === WebSocket.OPEN) {
-                                  ws.send(JSON.stringify({
-                                      type: 'update_settings',
-                                      settings: { 
-                                          garbageRate: parseFloat(garbageInput.value),
-                                          dropSpeed: parseInt(dropInput.value),
-                                          defeatTime: parseInt(defeatInput.value),
-                                          garbageDelay: parseInt(delayInput.value)
-                                          // garbagePrediction removed
-                                      }
-                                  }));
-                              }
-                          };
-                          garbageInput.onchange = updateSettings;
-                          dropInput.onchange = updateSettings;
-                          defeatInput.onchange = updateSettings;
-                          delayInput.onchange = updateSettings;
-                          // predictionInput onchange removed
-                      } else {
-                          garbageInput.onchange = null;
-                          dropInput.onchange = null;
-                          defeatInput.onchange = null;
-                          delayInput.onchange = null;
-                          // predictionInput onchange removed
-                      }
-                  }
+                       // Discordボタンの表示切替
+                       const discordBtn = document.getElementById('copyDiscordCmdBtn');
+                       if (discordBtn) {
+                           discordBtn.style.display = isMyHost ? 'inline-block' : 'none';
+                       }
+                       
+                        // ホスト権限更新
+                        if (isMyHost) {
+                             const updateSettings = () => {
+                                 if (ws && ws.readyState === WebSocket.OPEN) {
+                                     ws.send(JSON.stringify({
+                                         type: 'update_settings',
+                                         settings: { 
+                                             garbageRate: parseFloat(garbageInput.value),
+                                             dropSpeed: parseInt(dropInput.value),
+                                             defeatTime: parseInt(defeatInput.value),
+                                             garbageDelay: parseInt(delayInput.value),
+                                             skillEnabled: skillEnabledInput.checked,
+                                             skillRequiredCount: parseInt(skillRequiredInput.value),
+                                             animationMode: animationModeInput.value,
+                                             garbageMode: garbageModeInput.value
+                                         }
+                                     }));
+                                 }
+                             };
+                              garbageInput.onchange = updateSettings;
+                              dropInput.onchange = updateSettings;
+                              defeatInput.onchange = updateSettings;
+                              delayInput.onchange = updateSettings;
+                              skillEnabledInput.onchange = updateSettings;
+                              skillRequiredInput.onchange = updateSettings;
+                              animationModeInput.onchange = updateSettings;
+                              garbageModeInput.onchange = updateSettings;
+                          } else {
+                              garbageInput.onchange = null;
+                              dropInput.onchange = null;
+                              defeatInput.onchange = null;
+                             delayInput.onchange = null;
+                             skillEnabledInput.onchange = null;
+                             skillRequiredInput.onchange = null;
+                             animationModeInput.onchange = null;
+                             garbageModeInput.onchange = null;
+                        }
+                   }
                   break;
 
-              case 'game_start':
-                  hideWaitingRoom();
-                  if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
-                      const scene = game.scene.scenes[0];
-                      
-                      // 設定を適用
-                      const disableAnimationsCheckbox = document.getElementById('disableAnimations');
-                      if (disableAnimationsCheckbox) {
-                          scene.disableAnimations = disableAnimationsCheckbox.checked;
-                      }
-                      
-                      // Prediction Enabled logic removed (default true or internal)
-                      // scene.garbagePredictionEnabled = ...
-                      
-                      scene.startNewGame(data.players, data.settings, data.seed);
-                  }
-                  break;
+               case 'game_start':
+                   hideWaitingRoom();
+                   if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
+                       const scene = game.scene.scenes[0];
+                       
+                       // スワイプ設定を適用
+                       scene.swipeThreshold = swipeSettings.threshold;
+                       scene.swipeBoundaries = swipeSettings.boundaries;
+                       
+                       // 設定を適用
+                       const disableAnimationsCheckbox = document.getElementById('disableAnimations');
+                       if (disableAnimationsCheckbox) {
+                           scene.disableAnimations = disableAnimationsCheckbox.checked;
+                       }
+                       
+                       // 素早くスワイプ設定
+                       const quickSwipeCheckbox = document.getElementById('enableQuickSwipe');
+                       if (quickSwipeCheckbox) {
+                           scene.enableQuickSwipe = quickSwipeCheckbox.checked;
+                       }
+                       
+                       const quickSwipeThresholdSelect = document.getElementById('quickSwipeThreshold');
+                       if (quickSwipeThresholdSelect) {
+                           scene.quickSwipeThreshold = parseInt(quickSwipeThresholdSelect.value);
+                       }
+                       
+                        // スキル設定を適用
+                         if (data.settings) {
+                             scene.skillEnabled = data.settings.skillEnabled !== undefined ? data.settings.skillEnabled : true;
+                             scene.skillGaugeMax = data.settings.skillRequiredCount || 20;
+                         }
+                       
+                       scene.startNewGame(data.players, data.settings, data.seed);
+                   }
+                   break;
 
               case 'attack_ack':
                   if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
@@ -572,19 +1303,17 @@
                   showNotification(`🔔 Discord参加希望: ${data.discordName} さんが参加を希望しています！`);
                   break;
 
-              case 'hard_drop_animation':
+               case 'third_party_attack':
+                   if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
+                       game.scene.scenes[0].showThirdPartyAttack(data.fromPlayerId, data.toPlayerId, data.amount, data.sourcePositions);
+                   }
+                   break;
 
-              case 'third_party_attack':
-                  if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
-                      game.scene.scenes[0].showThirdPartyAttack(data.fromPlayerId, data.toPlayerId, data.amount, data.sourcePositions);
-                  }
-                  break;
-
-              case 'hard_drop_animation':
-                  if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
-                      game.scene.scenes[0].showOpponentHardDrop(data.playerId, data.data);
-                  }
-                  break;
+               case 'hard_drop_animation':
+                   if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
+                       game.scene.scenes[0].showOpponentHardDrop(data.playerId, data.data);
+                   }
+                   break;
 
               case 'clear_animation':
                   if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
@@ -612,21 +1341,33 @@
                   }
                   break;
                   
-              case 'force_return_lobby':
-                  // ホストがNEXTを押したので全員ロビーへ
-                  if (game && game.scene.scenes[0]) {
-                      game.scene.scenes[0].resetGame();
-                  }
-                  returnToLobby();
-                  break;
+               case 'force_return_lobby':
+                   // ホストがNEXTを押したので全員ロビーへ
+                   if (game && game.scene.scenes[0]) {
+                       const scene = game.scene.scenes[0];
+                       scene.resetGame();
+                       scene.gameStarted = false;
+                       scene.gameOver = false;
+                   }
+                   returnToLobby();
+                   break;
 
-              case 'ping':
-                  if (ws && ws.readyState === WebSocket.OPEN) {
-                      ws.send(JSON.stringify({ type: 'pong' }));
-                  }
-                  break;
-          }
-      }
+               case 'ping':
+                   if (ws && ws.readyState === WebSocket.OPEN) {
+                       ws.send(JSON.stringify({ type: 'pong' }));
+                   }
+                   break;
+
+                case 'skill_activated':
+                    if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
+                        game.scene.scenes[0].applySkillTransparentPuyos(
+                            data.fromPlayerId,
+                            data.fromPlayerName
+                        );
+                    }
+                    break;
+           }
+       }
 
       function onSocketClose() {
            const statusDiv = document.getElementById('status');
@@ -665,6 +1406,27 @@
                       sendChat();
                   }
               });
+              
+              // チャット入力中はキーボードイベントをゲームに伝播させない
+              chatInput.addEventListener('focus', () => {
+                  if (game && game.scene.scenes[0]) {
+                      game.scene.scenes[0].chatInputFocused = true;
+                  }
+              });
+              
+              chatInput.addEventListener('blur', () => {
+                  if (game && game.scene.scenes[0]) {
+                      game.scene.scenes[0].chatInputFocused = false;
+                  }
+              });
+          }
+
+          // プレイヤー名入力時にプリセットを読み込む
+          const playerNameInput = document.getElementById('playerNameInput');
+          if (playerNameInput) {
+              playerNameInput.addEventListener('change', () => {
+                  loadSwipePreset(playerNameInput.value.trim());
+              });
           }
 
           // URLパラメータ ?room=XXXX をチェック
@@ -681,6 +1443,7 @@
       function createRoom() {
           if (ws && ws.readyState === WebSocket.OPEN) {
               const playerName = document.getElementById('playerNameInput').value.trim();
+              loadSwipePreset(playerName);
               ws.send(JSON.stringify({ 
                   type: 'create_room',
                   playerName: playerName || undefined
@@ -692,6 +1455,7 @@
           const roomCode = document.getElementById('roomCodeInput').value.toUpperCase();
           if (roomCode.length === 4 && ws && ws.readyState === WebSocket.OPEN) {
               const playerName = document.getElementById('playerNameInput').value.trim();
+              loadSwipePreset(playerName);
               ws.send(JSON.stringify({
                   type: 'join_room',
                   roomCode: roomCode,
@@ -786,17 +1550,39 @@
               this.gameStarted = false;
               this.players = [];
               this.alivePlayers = [];
-              this.defeatTimer = null;
-              this.defeatTimer = null;
+               this.defeatTimer = null;
               this.defeatCountdownText = null;
               this.is1v1Mode = false;
               this.garbageRate = 1.0;
               this.isBoardAnimating = false; // 盤面アニメーション中フラグ
               this.currentTarget = null; // ターゲットロック用
               this.isSpectator = false; // 観戦モードフラグ
-              this.lastPieceUpdateTime = 0; // ピース更新スロットリング用
-              this.disableAnimations = false; // アニメーション無効化フラグ
-          }
+               this.lastPieceUpdateTime = 0; // ピース更新スロットリング用
+               this.disableAnimations = false; // アニメーション無効化フラグ
+               this.chatInputFocused = false; // チャット入力中フラグ
+               this.enableQuickSwipe = false; // 素早くスワイプで端に移動フラグ
+               this.quickSwipeThreshold = 80; // 素早くスワイプ判定距離
+               this.keyHoldStartTime = {}; // キー長押し開始時間
+               this.keyHoldInterval = null; // キー長押しインターバル
+                this.swipeThreshold = 20; // スワイプしきい値のデフォルト値
+                this.swipeBoundaries = [45, 135, 225, 315]; // スワイプ角度のデフォルト値
+                
+                // スキルシステム
+                this.skillEnabled = true;
+                this.skillGauge = 0; // 現在のスキルゲージ（おじゃまぷよ消去数）
+                this.skillGaugeMax = 20; // スキル発動に必要なおじゃまぷよ数
+                this.skillGaugeContainer = null; // スキルゲージ表示用コンテナ
+                this.skillGaugeBar = null; // スキルゲージバー
+                this.skillGaugeText = null; // スキルゲージテキスト
+                this.skillEffectTimer = null; // スキル効果タイマー
+                this.skillSenderText = null; // スキル発動者表示用テキスト
+                this.totalOjamaCleared = 0; // 累計おじゃまぷよ消去数
+                this.transparentPuyos = []; // 透明おじゃまぷよのリスト
+                
+                // ゲージアニメーション用
+                this.garbageGaugeTargetHeight = 0;
+                this.skillGaugeTargetHeight = 0;
+            }
 
           preload() {
               this.createGradientTexture();
@@ -825,50 +1611,66 @@
           }
 
           create() {
-              // 待機メッセージ
-              this.waitingText = this.add.text(
-                  this.cameras.main.centerX,
-                  this.cameras.main.centerY,
-                  'ゲーム開始を待っています...',
-                  {
-                      fontSize: '32px',
-                      fontFamily: '"JetBrains Mono"',
-                      fill: '#fff',
-                      fontStyle: 'bold'
-                  }
-              ).setOrigin(0.5);
+               // 待機メッセージ
+               this.waitingText = this.add.text(
+                   this.cameras.main.centerX,
+                   this.cameras.main.centerY,
+                   'ゲーム開始を待っています...',
+                   {
+                       fontSize: '32px',
+                       fontFamily: '"JetBrains Mono"',
+                       fill: '#fff',
+                       fontStyle: 'bold'
+                   }
+               ).setOrigin(0.5);
 
-              // キーボード設定
-              this.cursors = this.input.keyboard.createCursorKeys();
-              this.wasd = this.input.keyboard.addKeys({ up: 'W', left: 'A', down: 'S', right: 'D' });
-              this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+               // キーボード設定
+               this.cursors = this.input.keyboard.createCursorKeys();
+               this.wasd = this.input.keyboard.addKeys({ up: 'W', left: 'A', down: 'S', right: 'D' });
+               this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+               
+               // キーボードイベントのキャプチャ設定
+               this.input.keyboard.on('keydown', (event) => {
+                   // チャット入力中はゲーム操作を無効化
+                   if (this.chatInputFocused) {
+                       event.stopPropagation();
+                   }
+               });
 
-              // タッチ・スワイプ設定
-              this.setupTouchControls();
+                // タッチ・スワイプ設定
+                this.setupTouchControls();
+                this.setupMobileOptimizations();
+ 
+                this.lastMoveTime = 0;
+               this.lastRotateTime = 0;
+               this.lockDelayTimer = null;
+               this.isOnGround = false;
+               
+               // キー長押し用の初期化
+               this.keyHoldStartTime = {};
 
-              this.lastMoveTime = 0;
-              this.lastRotateTime = 0;
-              this.lockDelayTimer = null;
-              this.isOnGround = false;
-
-              // 敗北タイマー用テキスト
-              this.defeatCountdownText = this.add.text(0, 0, '', {
-                  fontSize: '64px',
-                  fontFamily: '"JetBrains Mono"',
-                  fill: '#ff0000',
-                  fontStyle: 'bold',
-                  stroke: '#ffffff',
-                  strokeThickness: 6
-              }).setOrigin(0.5).setDepth(1000).setVisible(false);
-          }
+               // 敗北タイマー用テキスト
+               this.defeatCountdownText = this.add.text(0, 0, '', {
+                   fontSize: '64px',
+                   fontFamily: '"JetBrains Mono"',
+                   fill: '#ff0000',
+                   fontStyle: 'bold',
+                   stroke: '#ffffff',
+                   strokeThickness: 6
+               }).setOrigin(0.5).setDepth(1000).setVisible(false);
+           }
 
           startNewGame(players, settings, seed) {
               if (this.gameStarted) return;
               this.gameStarted = true;
               this.players = players;
               this.alivePlayers = players.map(p => p.id);
-              this.gameSettings = settings || {};
-              this.garbageRate = (this.gameSettings.garbageRate) ? this.gameSettings.garbageRate : 1.0;
+                this.gameSettings = settings || {};
+                this.garbageRate = (this.gameSettings.garbageRate) ? this.gameSettings.garbageRate : 1.0;
+                this.skillEnabled = this.gameSettings.skillEnabled !== undefined ? this.gameSettings.skillEnabled : true;
+                this.animationMode = this.gameSettings.animationMode || 'normal';
+                this.garbageMode = this.gameSettings.garbageMode || 'drop';
+                this.garbageAppear = this.gameSettings.garbageAppear || 'drop';
               this.zoomedPlayerId = null;
 
               // シード付き乱数初期化 (全員同じシード)
@@ -881,32 +1683,35 @@
                   this.waitingText = null;
               }
 
-              // 既存の要素をクリア
-              this.children.removeAll(true);
+               // 既存の要素をクリア
+               this.children.removeAll(true);
 
-              // ゲーム状態をリセット
-              this.score = 0;
-              this.gameOver = false;
-              this.isMoving = false;
-              this.isBoardAnimating = false;
-              this.chainCount = 0;
-              this.pendingGarbageCount = 0;
-              this.garbageQueue = [];
-              if (this.defeatTimer) {
-                  this.defeatTimer.remove();
-                  this.defeatTimer = null;
-              }
-              if (this.defeatCountdownText) {
-                  this.defeatCountdownText.destroy(); // destroy instead of setVisible(false) for full reset
-                  this.defeatCountdownText = null; 
-              }
+               // ゲーム状態をリセット
+               this.score = 0;
+               this.gameOver = false;
+               this.isMoving = false;
+               this.isBoardAnimating = false;
+               this.chainCount = 0;
+               this.pendingGarbageCount = 0;
+               this.garbageQueue = [];
+               if (this.defeatTimer) {
+                   this.defeatTimer.remove();
+                   this.defeatTimer = null;
+               }
+               if (this.defeatCountdownText) {
+                   this.defeatCountdownText.destroy(); // destroy instead of setVisible(false) for full reset
+                   this.defeatCountdownText = null; 
+               }
 
-              // 敗北タイマー用テキスト再生成
-              this.defeatCountdownText = this.add.text(0, 0, '', {
-                  fontSize: '64px',
-                  fontFamily: '"JetBrains Mono"',
-                  fill: '#ff0000',
-                  fontStyle: 'bold',
+               // ログコンテナを確実に初期化（removeAllで削除されるため必ず再作成）
+               this.logContainer = this.add.container(980, 650).setDepth(1000);
+               
+               // 敗北タイマー用テキスト再生成
+               this.defeatCountdownText = this.add.text(0, 0, '', {
+                   fontSize: '64px',
+                   fontFamily: '"JetBrains Mono"',
+                   fill: '#ff0000',
+                   fontStyle: 'bold',
                   stroke: '#ffffff',
                   strokeThickness: 6
               }).setOrigin(0.5).setDepth(1000).setVisible(false);
@@ -968,49 +1773,57 @@
                   fontStyle: 'bold'
               }).setOrigin(0.5).setDepth(100);
 
-              // 予告ゲージ背景 (下寄せ)
-              this.garbageGaugeBg = this.add.rectangle(
-                  offsetX + COLS * CELL_SIZE + 15,
-                  ROWS * CELL_SIZE,
-                  20,
-                  ROWS * CELL_SIZE,
-                  0x333333,
-                  0.3
-              ).setOrigin(0, 1).setDepth(50);
+                // スキルゲージ（フィールドの左側）
+                if (this.skillEnabled) {
+                    this.createSkillGauge(offsetX - 45, 0);
+                }
 
-              // 予告ゲージ (下寄せ)
-              this.garbageGauge = this.add.rectangle(
-                  offsetX + COLS * CELL_SIZE + 15,
-                  ROWS * CELL_SIZE,
-                  20,
-                  0,
-                  0xff6b6b,
-                  0.8
-              ).setOrigin(0, 1).setDepth(51);
+                // 予告ゲージ背景 (下から伸びる)
+                const gaugeX = offsetX + COLS * CELL_SIZE + 15;
+                const gaugeBottomY = ROWS * CELL_SIZE;
+                this.garbageGaugeBg = this.add.rectangle(
+                    gaugeX,
+                    gaugeBottomY,
+                    20,
+                    ROWS * CELL_SIZE,
+                    0x333333,
+                    0.3
+                ).setOrigin(0, 1).setDepth(50);
 
-              // 予告数値
-              this.garbageCountText = this.add.text(
-                  offsetX + COLS * CELL_SIZE + 25,
-                  ROWS * CELL_SIZE / 2 - ROWS * CELL_SIZE / 2 - 20,
-                  '',
-                  {
-                      fontSize: '16px',
-                      fontFamily: '"JetBrains Mono"',
-                      fill: '#ff6b6b',
-                      fontStyle: 'bold'
-                  }
-              ).setOrigin(0.5).setDepth(52);
+                // 予告ゲージ (下から伸びる) - y座標は固定でheightだけ変える
+                this.garbageGauge = this.add.rectangle(
+                    gaugeX,
+                    gaugeBottomY,
+                    20,
+                    0,
+                    0xff6b6b,
+                    0.8
+                ).setOrigin(0, 1).setDepth(51);
+                this.garbageGauge.gaugeBottomY = gaugeBottomY; // 基準点を保存
 
-               // Next表示 (左横、上の方) - ユーザー要望: 左上
-               const nextX = offsetX - 70;
-               const nextY = 80;
-               this.add.text(nextX, nextY - 50, 'NEXT', {
-                   fontSize: '18px',
-                   fontFamily: '"JetBrains Mono"',
-                   fill: '#333',
-                   fontStyle: 'bold'
-               }).setOrigin(0.5).setDepth(100);
-               this.nextContainer = this.add.container(nextX, nextY).setDepth(100);
+                // 予告数値
+                this.garbageCountText = this.add.text(
+                    offsetX + COLS * CELL_SIZE + 25,
+                    ROWS * CELL_SIZE + 15,
+                    '',
+                    {
+                        fontSize: '16px',
+                        fontFamily: '"JetBrains Mono"',
+                        fill: '#ff6b6b',
+                        fontStyle: 'bold'
+                    }
+                ).setOrigin(0.5).setDepth(52);
+
+                 // Next表示 (左横、もっと下に)
+                const nextX = offsetX - 70;
+                const nextY = 200; // 80から200に変更して下に移動
+                this.add.text(nextX, nextY - 50, 'NEXT', {
+                    fontSize: '18px',
+                    fontFamily: '"JetBrains Mono"',
+                    fill: '#333',
+                    fontStyle: 'bold'
+                }).setOrigin(0.5).setDepth(100);
+                this.nextContainer = this.add.container(nextX, nextY).setDepth(100);
                
                // Nextキューの初期化 (2つ分表示するため、あらかじめ生成)
                this.nextQueue = [this.createPuyoPair(), this.createPuyoPair()];
@@ -1036,51 +1849,49 @@
           }
 
           startCountdown(onComplete) {
-              const texts = ['3', '2', '1', 'START!'];
-              let index = 0;
+               const texts = ['3', '2', '1', 'START!'];
+               let index = 0;
 
-              const showNext = () => {
-                  if (index >= texts.length) {
-                      onComplete();
-                      return;
-                  }
+               const showNext = () => {
+                   if (index >= texts.length) {
+                       onComplete();
+                       return;
+                   }
 
-                  const txt = this.add.text(
-                      this.cameras.main.centerX,
-                      this.cameras.main.centerY,
-                      texts[index],
-                      {
-                          fontSize: '80px',
-                          fontFamily: '"JetBrains Mono"',
-                          fill: '#ff6b6b',
-                          fontStyle: 'bold',
-                          stroke: '#ffffff',
-                          strokeThickness: 8
-                      }
-                  ).setOrigin(0.5).setDepth(2000);
+                   const txt = this.add.text(
+                       this.cameras.main.centerX,
+                       this.cameras.main.centerY,
+                       texts[index],
+                       {
+                           fontSize: '80px',
+                           fontFamily: '"JetBrains Mono"',
+                           fill: '#ff6b6b',
+                           fontStyle: 'bold',
+                           stroke: '#ffffff',
+                           strokeThickness: 8
+                       }
+                   ).setOrigin(0.5).setDepth(2000);
 
-                  this.tweens.add({
-                      targets: txt,
-                      scale: { from: 0.5, to: 1.5 },
-                      alpha: { from: 1, to: 0 },
-                      duration: 700,
-                      onStart: () => {
-                          if (texts[index] === 'START!') {
-                              onComplete();
-                          }
-                      },
-                      onComplete: () => {
-                          txt.destroy();
-                          index++;
-                          if (texts[index-1] !== 'START!') {
-                              showNext();
-                          }
-                      }
-                  });
-              };
+                   this.tweens.add({
+                       targets: txt,
+                       scale: { from: 0.5, to: 1.5 },
+                       alpha: { from: 1, to: 0 },
+                       duration: 700,
+                       onComplete: () => {
+                           txt.destroy();
+                           index++;
+                           if (texts[index-1] !== 'START!') {
+                               showNext();
+                           } else {
+                               // STARTが終わったらonCompleteを呼ぶ
+                               onComplete();
+                           }
+                       }
+                   });
+               };
 
-              showNext();
-          }
+               showNext();
+           }
 
           createField(x, label) {
               // 背景
@@ -1221,37 +2032,36 @@
                        fontStyle: 'bold'
                    }).setOrigin(0.5);
                    
-                   // 1v1用: 相手の予告ゲージ (右寄せ)
-                   // 1v1用: 相手の予告ゲージ (右寄せ)
-                   field.garbageGaugeBg = this.add.rectangle(
-                       opponentX - 35, // 左側に配置してみる -> 相手フィールドの左側
-                       opponentY + ROWS * CELL_SIZE - 5 - CELL_SIZE, // Adjusted -1 mass
-                       20,
-                       ROWS * CELL_SIZE,
-                       0x333333,
-                       0.3
-                   ).setOrigin(0, 1).setDepth(50);
+                    // 1v1用: 相手の予告ゲージ (上に伸びる)
+                    field.garbageGaugeBg = this.add.rectangle(
+                        opponentX - 35,
+                        opponentY - CELL_SIZE,
+                        20,
+                        ROWS * CELL_SIZE,
+                        0x333333,
+                        0.3
+                    ).setOrigin(0, 0).setDepth(50);
 
-                   field.garbageGauge = this.add.rectangle(
-                       opponentX - 35,
-                       opponentY + ROWS * CELL_SIZE - 5 - CELL_SIZE, // Adjusted -1 mass
-                       20,
-                       0,
-                       0xff6b6b,
-                       0.8
-                   ).setOrigin(0, 1).setDepth(51);
+                    field.garbageGauge = this.add.rectangle(
+                        opponentX - 35,
+                        opponentY - CELL_SIZE,
+                        20,
+                        0,
+                        0xff6b6b,
+                        0.8
+                    ).setOrigin(0, 0).setDepth(51);
 
-                   field.garbageCountText = this.add.text(
-                       opponentX - 5,
-                       opponentY - 20 - CELL_SIZE,
-                       '',
-                       {
-                           fontSize: '16px',
-                           fontFamily: '"JetBrains Mono"',
-                           fill: '#ff6b6b',
-                           fontStyle: 'bold'
-                       }
-                   ).setOrigin(0.5).setDepth(52);
+                    field.garbageCountText = this.add.text(
+                        opponentX - 25,
+                        opponentY - 30 - CELL_SIZE,
+                        '',
+                        {
+                            fontSize: '16px',
+                            fontFamily: '"JetBrains Mono"',
+                            fill: '#ff6b6b',
+                            fontStyle: 'bold'
+                        }
+                    ).setOrigin(0.5).setDepth(52);
                    
                    this.opponentFields.set(opponents[0].id, field);
                    
@@ -1320,15 +2130,46 @@
                       ).setOrigin(0.5);
                       field.border.setStrokeStyle(2, 0x95a5a6);
     
-                      // プレイヤー名
-                      field.name = this.add.text(x + fieldWidth / 2, y - 15, player.name, {
-                          fontSize: '12px',
-                          fontFamily: '"JetBrains Mono"',
-                          fill: '#333',
-                          fontStyle: 'bold'
-                      }).setOrigin(0.5);
-    
-                      this.opponentFields.set(player.id, field);
+                       // プレイヤー名
+                       field.name = this.add.text(x + fieldWidth / 2, y - 15, player.name, {
+                           fontSize: '12px',
+                           fontFamily: '"JetBrains Mono"',
+                           fill: '#333',
+                           fontStyle: 'bold'
+                       }).setOrigin(0.5);
+                       
+                       // おじゃまぷよゲージ（バトルロワイヤルモードでも表示）
+                       field.garbageGaugeBg = this.add.rectangle(
+                           x + fieldWidth + 5,
+                           y,
+                           8,
+                           fieldHeight,
+                           0x333333,
+                           0.3
+                       ).setOrigin(0, 0).setDepth(50);
+                       
+                       field.garbageGauge = this.add.rectangle(
+                           x + fieldWidth + 5,
+                           y,
+                           8,
+                           0,
+                           0xff6b6b,
+                           0.8
+                       ).setOrigin(0, 0).setDepth(51);
+                       
+                       field.garbageCountText = this.add.text(
+                           x + fieldWidth + 9,
+                           y - 10,
+                           '',
+                           {
+                               fontSize: '10px',
+                               fontFamily: '"JetBrains Mono"',
+                               fill: '#ff6b6b',
+                               fontStyle: 'bold'
+                           }
+                       ).setOrigin(0.5).setDepth(52);
+     
+                       this.opponentFields.set(player.id, field);
                   });
               }
           }
@@ -1420,18 +2261,20 @@
                   }
               }
               
-              // 予告ゲージ更新 (1v1のみ)
-              if (field.garbageGauge && field.garbageGaugeBg) {
-                  const maxGarbage = 30;
-                  const ratio = Math.min(garbageCount / maxGarbage, 1);
-                  const gaugeHeight = ROWS * CELL_SIZE * ratio;
-                  
-                  field.garbageGauge.setSize(20, gaugeHeight); // 原点が下なので高さ変えるだけでOK
-                  
-                  if (field.garbageCountText) {
-                      field.garbageCountText.setText(garbageCount > 0 ? `${garbageCount}` : '');
-                  }
-              }
+               // 予告ゲージ更新 (全モード共通)
+               if (field.garbageGauge && field.garbageGaugeBg) {
+                   const maxGarbage = 30;
+                   const ratio = Math.min(garbageCount / maxGarbage, 1);
+                   // スケールに応じた高さ計算
+                   const scale = field.scale || 1;
+                   const gaugeHeight = (ROWS * CELL_SIZE * scale) * ratio;
+                   
+                   field.garbageGauge.height = gaugeHeight;
+                   
+                   if (field.garbageCountText) {
+                       field.garbageCountText.setText(garbageCount > 0 ? `${garbageCount}` : '');
+                   }
+               }
           }
 
           toggleZoom(playerId) {
@@ -1500,68 +2343,161 @@
           }
 
           setupTouchControls() {
-              this.touchStartX = 0;
-              this.touchStartY = 0;
-              this.touchStartTime = 0;
-              this.swipeThreshold = 30;
+                this.touchStartX = 0;
+                this.touchStartY = 0;
+                this.touchStartTime = 0;
+                this.activeTouchId = null; // マルチタッチ対策
+                
+                // ゲーム領域全体をタッチ可能に
+                const gameZone = this.add.rectangle(
+                    this.cameras.main.centerX,
+                    this.cameras.main.centerY,
+                    this.cameras.main.width,
+                    this.cameras.main.height,
+                    0x000000,
+                    0
+                ).setDepth(-100).setInteractive({ draggable: false });
+ 
+                this.input.on('pointerdown', (pointer) => {
+                    if (this.gameOver || !this.gameStarted) return;
+                    // マルチタッチ対策: 最初のタッチのみ追跡
+                    if (this.activeTouchId !== null) return;
+                    this.activeTouchId = pointer.id;
+                    
+                    this.touchStartX = pointer.x;
+                    this.touchStartY = pointer.y;
+                    this.touchStartTime = this.time.now;
+                    this.isSwiping = true;
+                });
+                
+                this.input.on('pointerup', (pointer) => {
+                    // 追跡中のタッチのみ処理
+                    if (this.activeTouchId !== pointer.id) return;
+                    this.activeTouchId = null;
+                    
+                    if (!this.isSwiping) return;
+                    this.isSwiping = false;
+                    if (this.gameOver || !this.currentPair) return;
+                    
+                    // タッチ位置を取得（pointerdown時と同じように）
+                    const endX = pointer.x;
+                    const endY = pointer.y;
+                    const deltaX = endX - this.touchStartX;
+                    const deltaY = endY - this.touchStartY;
+                    const deltaTime = this.time.now - this.touchStartTime;
+                    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                    
+                    // 非同期化してメインスレッドを解放（モバイル最適化）
+                    requestAnimationFrame(() => {
+                        this.handleSwipe(deltaX, deltaY, deltaTime, distance);
+                    });
+                });
+                
+                this.input.on('pointerupoutside', (pointer) => {
+                    if (this.activeTouchId !== pointer.id) return;
+                    this.activeTouchId = null;
+                    
+                    if (!this.isSwiping) return;
+                    this.isSwiping = false;
+                    if (this.gameOver || !this.currentPair) return;
+                    
+                    // 画面外でも現在のポインター位置を使用
+                    const deltaX = pointer.x - this.touchStartX;
+                    const deltaY = pointer.y - this.touchStartY;
+                    const deltaTime = this.time.now - this.touchStartTime;
+                    const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                    
+                    // 非同期化してメインスレッドを解放（モバイル最適化）
+                    requestAnimationFrame(() => {
+                        this.handleSwipe(deltaX, deltaY, deltaTime, distance);
+                    });
+                });
+            }
+            
+            handleSwipe(deltaX, deltaY, deltaTime, distance) {
+                // 素早く遠くにスワイプした場合は端に移動
+                if (this.enableQuickSwipe && distance >= this.quickSwipeThreshold && deltaTime < 200) {
+                    if (Math.abs(deltaX) > Math.abs(deltaY)) {
+                        if (deltaX > 0) {
+                            this.moveToEdge(1);
+                        } else {
+                            this.moveToEdge(-1);
+                        }
+                        return;
+                    }
+                }
+                
+                // タップ（短時間・短距離）
+                if (distance < this.swipeThreshold && deltaTime < 300) {
+                    this.rotatePair();
+                    return;
+                }
+                
+                if (distance >= this.swipeThreshold) {
+                    const angle = Math.atan2(deltaY, deltaX);
+                    let angleDeg = angle * 180 / Math.PI;
+                    if (angleDeg < 0) angleDeg += 360;
 
-              this.input.on('pointerdown', (pointer) => {
-                  if (this.gameOver) return;
-                  this.touchStartX = pointer.x;
-                  this.touchStartY = pointer.y;
-                  this.touchStartTime = this.time.now;
-                  this.isSwiping = true; // スワイプ開始フラグ
-              });
-
-              const handleTouchEnd = (pointer) => {
-                  if (!this.isSwiping) return; // スワイプ中でなければ無視
-                  this.isSwiping = false;
-                  if (this.gameOver || !this.currentPair || this.isMoving) return;
-
-                  const deltaX = pointer.x - this.touchStartX;
-                  const deltaY = pointer.y - this.touchStartY;
-                  const deltaTime = this.time.now - this.touchStartTime;
-                  const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
-
-                  if (distance < this.swipeThreshold && deltaTime < 300) {
-                      this.rotatePair();
-                  } else if (distance > this.swipeThreshold) {
-                      const angle = Math.atan2(deltaY, deltaX); // -PI to PI
-                      const angleDeg = angle * 180 / Math.PI;
-
-                       if (angleDeg > 22.5 && angleDeg < 67.5) {
-                           // 右斜め下: 移動(右) + ハードドロップ
-                           this.movePair(1);
-                           this.hardDrop();
-                       } else if (angleDeg > 112.5 && angleDeg < 157.5) {
-                           // 左斜め下: 移動(左) + ハードドロップ
-                           this.movePair(-1);
-                           this.hardDrop();
-                       } else if (angleDeg >= 67.5 && angleDeg <= 112.5) {
-                           // 真下: ハードドロップ
-                           this.hardDrop();
-                       } else if (angleDeg <= -45 && angleDeg >= -135) {
-                           // 上方向全般: 回転
-                           this.rotatePair();
-                       } else if (Math.abs(angleDeg) <= 22.5) {
-                           // 右
-                           this.movePair(1);
-                       } else if (Math.abs(angleDeg) >= 157.5) {
-                           // 左
-                           this.movePair(-1);
-                       } else if (angleDeg < -135 || angleDeg > 157.5) {
-                           // 左斜め上など: 回転
-                           this.rotatePair();
-                       } else if (angleDeg < -22.5 && angleDeg > -45) {
-                           // 右斜め上など: 回転
-                           this.rotatePair();
-                       }
-                  }
-              };
-              
-              this.input.on('pointerup', handleTouchEnd);
-              this.input.on('pointerupoutside', handleTouchEnd); // 画面外で指を離した場合も検知
-          }
+                    const [rd, dl, lu, ur] = this.swipeBoundaries || [45, 135, 225, 315];
+                    
+                    // UR to RD -> Right
+                    if ((angleDeg >= ur && angleDeg < 360) || (angleDeg >= 0 && angleDeg < rd)) {
+                        this.movePair(1); // Right
+                    } 
+                    // RD to DL -> Down
+                    else if (angleDeg >= rd && angleDeg < dl) {
+                        this.hardDrop(); // Down
+                    }
+                    // DL to LU -> Left
+                    else if (angleDeg >= dl && angleDeg < lu) {
+                        this.movePair(-1); // Left
+                    }
+                    // LU to UR -> Up
+                    else if (angleDeg >= lu && angleDeg < ur) {
+                        this.rotatePair(); // Up
+                    }
+                }
+            }
+            
+            // モバイルでのタッチ遅延を防止するためのtouch-action設定
+            setupMobileOptimizations() {
+                // Canvasのtouch-actionを設定
+                const canvas = this.game.canvas;
+                canvas.style.touchAction = 'none';
+                canvas.style.userSelect = 'none';
+                canvas.style.webkitUserSelect = 'none';
+                
+                // ダブルタップズームを防止
+                let lastTouchEnd = 0;
+                canvas.addEventListener('touchend', (e) => {
+                    const now = Date.now();
+                    if (now - lastTouchEnd <= 300) {
+                        e.preventDefault();
+                    }
+                    lastTouchEnd = now;
+                }, false);
+            }
+           
+           // 端に移動（素早くスワイプ時）
+           moveToEdge(direction) {
+               if (!this.currentPair) return;
+               
+               let col = this.currentPair.col;
+               while (true) {
+                   const newCol = col + direction;
+                   const positions = this.getPairPositions(newCol, this.currentPair.row, this.currentPair.rotation);
+                   if (!this.isValidPosition(positions)) break;
+                   col = newCol;
+               }
+               
+               if (col !== this.currentPair.col) {
+                   this.currentPair.col = col;
+                   this.updatePairPosition();
+                   this.updateGhostPieces();
+                   this.resetLockDelay();
+                   this.sendPieceUpdate();
+               }
+           }
 
           createPuyo(x, y, color, isGhost = false, customAlpha = 1, animate = true) {
               const puyo = this.add.container(x, y);
@@ -1627,11 +2563,17 @@
               };
           }
 
-          spawnNewPair() {
-              if (this.gameOver) return;
- 
-              // キューから取得し、補充する (常に2つ先まで保持)
-              const nextPairData = this.nextQueue.shift();
+           spawnNewPair() {
+               if (this.gameOver) return;
+               
+               // 既に操作中のペアが存在する場合はスキップ（二重生成防止）
+               if (this.currentPair) {
+                   console.log('spawnNewPair skipped: currentPair already exists');
+                   return;
+               }
+  
+               // キューから取得し、補充する (常に2つ先まで保持)
+               const nextPairData = this.nextQueue.shift();
               this.nextQueue.push(this.createPuyoPair());
               this.updateNextDisplay();
 
@@ -1680,11 +2622,12 @@
 
               if (!this.currentPair || this.isMoving) return;
 
+              // 透明ぷよを無視して落下位置を計算
               let dropRow = this.currentPair.row;
               while (true) {
                   const testRow = dropRow + 1;
                   const positions = this.getPairPositions(this.currentPair.col, testRow, this.currentPair.rotation);
-                  if (!this.isValidPosition(positions)) break;
+                  if (!this.isValidPositionIgnoringTransparent(positions)) break;
                   dropRow = testRow;
               }
 
@@ -1733,39 +2676,78 @@
                    this.nextContainer.add(sub);
                });
            }
-          update(time) {
-              if (this.gameOver || !this.currentPair || this.isMoving || !this.gameStarted) return;
+           update(time) {
+               // チャット入力中は操作を無効化
+               if (this.chatInputFocused) return;
+               
+               // アニメーション中でも次のぷよが出ている場合は操作可能（isMoving制限を緩和）
+               if (this.gameOver || !this.currentPair || !this.gameStarted) return;
 
-              if ((this.cursors.left.isDown || this.wasd.left.isDown) && time > this.lastMoveTime + 150) {
-                  this.movePair(-1);
-                  this.lastMoveTime = time;
-              } else if ((this.cursors.right.isDown || this.wasd.right.isDown) && time > this.lastMoveTime + 150) {
-                  this.movePair(1);
-                  this.lastMoveTime = time;
-              }
+               // キー長押しによる高速移動処理
+               const moveDelay = this.calculateMoveDelay(time);
+               
+               if ((this.cursors.left.isDown || this.wasd.left.isDown) && time > this.lastMoveTime + moveDelay) {
+                   this.movePair(-1);
+                   this.lastMoveTime = time;
+               } else if ((this.cursors.right.isDown || this.wasd.right.isDown) && time > this.lastMoveTime + moveDelay) {
+                   this.movePair(1);
+                   this.lastMoveTime = time;
+               }
 
-              if ((Phaser.Input.Keyboard.JustDown(this.cursors.up) || Phaser.Input.Keyboard.JustDown(this.wasd.up)) && time > this.lastRotateTime + 50) {
-                  this.rotatePair();
-                  this.lastRotateTime = time;
-              }
+               if ((Phaser.Input.Keyboard.JustDown(this.cursors.up) || Phaser.Input.Keyboard.JustDown(this.wasd.up)) && time > this.lastRotateTime + 50) {
+                   this.rotatePair();
+                   this.lastRotateTime = time;
+               }
 
-              if (Phaser.Input.Keyboard.JustDown(this.spaceKey) || Phaser.Input.Keyboard.JustDown(this.cursors.down) || Phaser.Input.Keyboard.JustDown(this.wasd.down)) {
-                  this.hardDrop();
-              }
+               if (Phaser.Input.Keyboard.JustDown(this.spaceKey) || Phaser.Input.Keyboard.JustDown(this.cursors.down) || Phaser.Input.Keyboard.JustDown(this.wasd.down)) {
+                   this.hardDrop();
+               }
 
-              // 敗北タイマー更新
-              if (this.defeatTimer) {
-                  const remaining = Math.ceil(this.defeatTimer.getRemaining() / 1000);
-                  this.defeatCountdownText.setText(remaining.toString());
-                  this.defeatCountdownText.setPosition(
-                      this.fieldOffsetX + COLS * CELL_SIZE / 2,
-                      ROWS * CELL_SIZE + 60
-                  );
-                  this.defeatCountdownText.setVisible(true);
-              } else {
-                  this.defeatCountdownText.setVisible(false);
-              }
-          }
+                // 敗北タイマー更新
+                if (this.defeatTimer) {
+                    const remaining = Math.ceil(this.defeatTimer.getRemaining() / 1000);
+                    this.defeatCountdownText.setText(remaining.toString());
+                    this.defeatCountdownText.setPosition(
+                        this.fieldOffsetX + COLS * CELL_SIZE / 2,
+                        ROWS * CELL_SIZE + 60
+                    );
+                    this.defeatCountdownText.setVisible(true);
+                } else {
+                    this.defeatCountdownText.setVisible(false);
+                }
+
+                 // 透明ぷよのチェック（上にぷよが乗ったか）
+                 this.checkTransparentPuyoReveal();
+             }
+           
+           // キー長押し時間に応じた移動遅延を計算
+           calculateMoveDelay(currentTime) {
+               const baseDelay = 150;
+               const fastDelay = 50;
+               const holdThreshold = 300; // 300ms以上長押しで高速化
+               
+               const leftHeld = this.cursors.left.isDown || this.wasd.left.isDown;
+               const rightHeld = this.cursors.right.isDown || this.wasd.right.isDown;
+               
+               if (!leftHeld && !rightHeld) {
+                   this.keyHoldStartTime = {};
+                   return baseDelay;
+               }
+               
+               const direction = leftHeld ? 'left' : 'right';
+               
+               if (!this.keyHoldStartTime[direction]) {
+                   this.keyHoldStartTime[direction] = currentTime;
+               }
+               
+               const holdDuration = currentTime - this.keyHoldStartTime[direction];
+               
+               if (holdDuration > holdThreshold) {
+                   return fastDelay;
+               }
+               
+               return baseDelay;
+           }
 
           movePair(dir) {
               const newCol = this.currentPair.col + dir;
@@ -1955,6 +2937,24 @@
               return true;
           }
 
+          // 透明ぷよを無視して位置チェック（ゴースト表示用）
+          isValidPositionIgnoringTransparent(positions) {
+              for (let pos of [positions.main, positions.sub]) {
+                  if (pos.col < 0 || pos.col >= COLS || pos.row >= ROWS) return false;
+                  if (pos.row >= 0) {
+                      const gridPuyo = this.grid[pos.row][pos.col];
+                      if (gridPuyo !== null) {
+                          // 透明ぷよの場合は無視
+                          const isTransparent = gridPuyo.getData('isTransparent');
+                          if (!isTransparent) {
+                              return false;
+                          }
+                      }
+                  }
+              }
+              return true;
+          }
+
           updatePairPosition() {
               const positions = this.getPairPositions(
                   this.currentPair.col,
@@ -2004,111 +3004,126 @@
           }
 
           async lockPair() {
-              this.isMoving = true;
+               this.isMoving = true;
 
-              if (this.lockDelayTimer) {
-                  this.lockDelayTimer.remove();
-                  this.lockDelayTimer = null;
-              }
-              this.isOnGround = false;
+               if (this.lockDelayTimer) {
+                   this.lockDelayTimer.remove();
+                   this.lockDelayTimer = null;
+               }
+               this.isOnGround = false;
 
-              // 連鎖アニメーション中などは待機
-              if (this.isBoardAnimating) {
-                  await this.waitForBoardStability();
-              }
+               if (this.currentPair.ghostMain) {
+                   this.currentPair.ghostMain.destroy();
+                   this.currentPair.ghostMain = null;
+               }
+               if (this.currentPair.ghostSub) {
+                   this.currentPair.ghostSub.destroy();
+                   this.currentPair.ghostSub = null;
+               }
 
-              if (this.currentPair.ghostMain) {
-                  this.currentPair.ghostMain.destroy();
-                  this.currentPair.ghostMain = null;
-              }
-              if (this.currentPair.ghostSub) {
-                  this.currentPair.ghostSub.destroy();
-                  this.currentPair.ghostSub = null;
-              }
+               const positions = this.getPairPositions(
+                   this.currentPair.col,
+                   this.currentPair.row,
+                   this.currentPair.rotation
+               );
 
-              const positions = this.getPairPositions(
-                  this.currentPair.col,
-                  this.currentPair.row,
-                  this.currentPair.rotation
-              );
+               // 最終チェック: 設置位置が有効か？（おじゃまぷよ落下などで埋まっていないか）
+               if (!this.isValidPosition(positions) && positions.main.row >= 0) {
+                   // 無効なら1つ上にずらしてみる
+                   const upPositions = this.getPairPositions(this.currentPair.col, this.currentPair.row - 1, this.currentPair.rotation);
+                   if (this.isValidPosition(upPositions)) {
+                        this.currentPair.row--;
+                        // 位置再計算
+                        positions.main = upPositions.main;
+                        positions.sub = upPositions.sub;
+                   } else {
+                       // それでもダメならゲームオーバー
+                       this.endGame();
+                       return;
+                   }
+               }
 
-              // 最終チェック: 設置位置が有効か？（おじゃまぷよ落下などで埋まっていないか）
-              if (!this.isValidPosition(positions) && positions.main.row >= 0) {
-                  // 無効なら1つ上にずらしてみる
-                  const upPositions = this.getPairPositions(this.currentPair.col, this.currentPair.row - 1, this.currentPair.rotation);
-                  if (this.isValidPosition(upPositions)) {
-                       this.currentPair.row--;
-                       // 位置再計算
-                       positions.main = upPositions.main;
-                       positions.sub = upPositions.sub;
-                  } else {
-                      // それでもダメならゲームオーバー
-                      this.endGame();
-                      return;
-                  }
-              }
+                if (positions.main.row >= 0) {
+                    this.grid[positions.main.row][positions.main.col] = this.currentPair.main.sprite;
+                } else {
+                    this.currentPair.main.sprite.destroy();
+                }
 
-              if (positions.main.row >= 0) {
-                  this.grid[positions.main.row][positions.main.col] = this.currentPair.main.sprite;
-              } else {
-                  this.currentPair.main.sprite.destroy();
-              }
+                if (positions.sub.row >= 0) {
+                    this.grid[positions.sub.row][positions.sub.col] = this.currentPair.sub.sprite;
+                } else {
+                    this.currentPair.sub.sprite.destroy();
+                }
 
-              if (positions.sub.row >= 0) {
-                  this.grid[positions.sub.row][positions.sub.col] = this.currentPair.sub.sprite;
-              } else {
-                  this.currentPair.sub.sprite.destroy();
-              }
+                this.currentPair = null;
+  
+                // アニメーション処理を開始（非同期）
+                // 次のぷよはすぐに出して操作可能にする
+                // 既に次のぷよが存在する場合はスキップ（二重生成防止）
+                if (!this.currentPair) {
+                    this.spawnNewPair();
+                }
+                this.isMoving = false;
+                
+                // 透明ぷよのチェック - 立即に実行
+                this.time.delayedCall(50, () => {
+                    this.checkTransparentPuyoReveal();
+                });
 
-              this.currentPair = null;
-
-              // 次の操作を許可（非同期処理開始）
-              await this.processBoardMatches(); // メイン処理を待機
-              
-              this.isMoving = false;
-              this.spawnNewPair();
-          }
-
-          async waitForBoardStability() {
-              while (this.isBoardAnimating) {
-                  await this.delay(50);
-              }
-          }
-
-          async processBoardMatches() {
-              this.isBoardAnimating = true;
-
-              this.chainCount = 0;  // チェインはリセット
-              // コンボはリセットしない（消えなかったらリセット）
-              
-              await this.applyGravity();  // 先に重力を適用してプヨを落とす
-              await this.checkAndClearMatches();
-
-
-              // 待機キューから確定へ移動 (時間が経過したもの)
-              if (this.garbageQueue) {
-                  const now = this.time.now;
-                  // 逆順でループして安全に削除
-                  for (let i = this.garbageQueue.length - 1; i >= 0; i--) {
-                      if (now >= this.garbageQueue[i].time) {
-                          this.pendingGarbageCount += this.garbageQueue[i].amount;
-                          this.garbageQueue.splice(i, 1);
-                      }
-                  }
-              }
-
-              // おじゃまぷよの処理
-              if (this.pendingGarbageCount > 0) {
-                  // 少し遅らせておじゃまぷよの落下演出
-                  this.time.delayedCall(200, () => {
-                      this.dropGarbagePuyos();
-                  });
-              }
-
-              this.sendFieldUpdate();
-              
-              this.isBoardAnimating = false;
-          }
+                 // 盤面処理はバックグラウンドで実行
+                 try {
+                     this.processBoardMatches();
+                 } catch (e) {
+                     console.error('Error in processBoardMatches:', e);
+                     this.isBoardAnimating = false;
+                 }
+             }
+ 
+            async processBoardMatches() {
+                 // アニメーション中フラグは立てるが、操作はブロックしない
+                 this.isBoardAnimating = true;
+                 
+                 try {
+                     this.chainCount = 0;  // チェインはリセット
+                     // コンボはリセットしない（消えなかったらリセット）
+                     
+                     await this.applyGravity();  // 先に重力を適用してプヨを落とす
+                     
+                     // 重力適用後に透明ぷよをチェック
+                     this.checkTransparentPuyoReveal();
+                     
+                     await this.checkAndClearMatches();
+                     
+                     // 連鎖後も透明ぷよをチェック
+                     this.checkTransparentPuyoReveal();
+     
+                     // 待機キューから確定へ移動 (時間が経過したもの)
+                     if (this.garbageQueue) {
+                         const now = this.time.now;
+                         // 逆順でループして安全に削除
+                         for (let i = this.garbageQueue.length - 1; i >= 0; i--) {
+                             if (now >= this.garbageQueue[i].time) {
+                                 this.pendingGarbageCount += this.garbageQueue[i].amount;
+                                 this.garbageQueue.splice(i, 1);
+                             }
+                         }
+                     }
+     
+                     // おじゃまぷよの処理
+                     if (this.pendingGarbageCount > 0) {
+                        // 少し遅らせておじゃまぷよの落下演出
+                        this.time.delayedCall(200, () => {
+                            this.dropGarbagePuyos();
+                        });
+                    }
+     
+                    this.sendFieldUpdate();
+                } catch (e) {
+                    console.error('Error in processBoardMatches:', e);
+                } finally {
+                    this.isBoardAnimating = false;
+                }
+            }
 
           async checkAndClearMatches() {
               const MAX_LOOPS = 20;
@@ -2301,40 +3316,52 @@
               return group;
           }
 
-          async clearPuyos(matches) {
-              return new Promise(resolve => {
-                  const uniqueMatches = [];
-                  const seen = new Set();
+           async clearPuyos(matches) {
+               return new Promise(resolve => {
+                   const uniqueMatches = [];
+                   const seen = new Set();
 
-                  for (const m of matches) {
-                      const key = `${m.row},${m.col}`;
-                      if (!seen.has(key)) {
-                          seen.add(key);
-                          uniqueMatches.push(m);
-                      }
-                  }
+                   for (const m of matches) {
+                       const key = `${m.row},${m.col}`;
+                       if (!seen.has(key)) {
+                           seen.add(key);
+                           uniqueMatches.push(m);
+                       }
+                   }
 
-                  const sprites = [];
+                    const sprites = [];
+                    let normalPuyoClearedCount = 0; // 通常ぷよ消去数をカウント
 
-                  for (const m of uniqueMatches) {
-                      if (this.grid[m.row] && this.grid[m.row][m.col]) {
-                          const sprite = this.grid[m.row][m.col];
-                          if (sprite && sprite.active && sprite.scene) {
-                              sprites.push(sprite);
-                          }
-                      }
-                  }
+                    for (const m of uniqueMatches) {
+                        if (this.grid[m.row] && this.grid[m.row][m.col]) {
+                            const sprite = this.grid[m.row][m.col];
+                            if (sprite && sprite.active && sprite.scene) {
+                                sprites.push(sprite);
+                                // 通常のぷよ（gray以外）の場合はカウント
+                                const color = sprite.getData('color');
+                                if (color && color !== 'gray' && !m.isGarbage) {
+                                    normalPuyoClearedCount++;
+                                }
+                            }
+                        }
+                    }
 
-                  if (sprites.length === 0) {
-                      resolve();
-                      return;
-                  }
+                    // 通常ぷよを消した場合はスキルゲージに追加
+                    if (normalPuyoClearedCount > 0) {
+                        this.showDebugInfo(`Cleared ${normalPuyoClearedCount} puyo!`);
+                        this.addSkillOjamaCount(normalPuyoClearedCount);
+                    }
 
-                  for (const m of uniqueMatches) {
-                      if (this.grid[m.row] && this.grid[m.row][m.col]) {
-                          this.grid[m.row][m.col] = null;
-                      }
-                  }
+                   if (sprites.length === 0) {
+                       resolve();
+                       return;
+                   }
+
+                   for (const m of uniqueMatches) {
+                       if (this.grid[m.row] && this.grid[m.row][m.col]) {
+                           this.grid[m.row][m.col] = null;
+                       }
+                   }
 
                   if (this.chainCount > 1 && !this.disableAnimations) { // アニメーション有効時のみ振動
                       try {
@@ -2468,24 +3495,395 @@
               return new Promise(resolve => this.time.delayedCall(ms, resolve));
           }
 
-          updateGarbageGauge() {
-              let totalGarbage = this.pendingGarbageCount;
-              if (this.garbageQueue) {
-                  totalGarbage += this.garbageQueue.reduce((sum, item) => sum + item.amount, 0);
+             updateGarbageGauge() {
+                  let totalGarbage = this.pendingGarbageCount;
+                  if (this.garbageQueue) {
+                      totalGarbage += this.garbageQueue.reduce((sum, item) => sum + item.amount, 0);
+                  }
+
+                  const maxGarbage = 30;
+                  const ratio = Math.min(totalGarbage / maxGarbage, 1);
+                  const targetHeight = ROWS * CELL_SIZE * ratio;
+                  const bottomY = this.garbageGauge.gaugeBottomY;
+
+                  // アニメーションで高さを変更（下から上に伸びる）
+                  if (this.garbageGauge) {
+                      this.tweens.killTweensOf(this.garbageGauge);
+                      
+                      this.tweens.add({
+                          targets: this.garbageGauge,
+                          height: targetHeight,
+                          y: bottomY - targetHeight,
+                          duration: 300,
+                          ease: 'Power2'
+                      });
+                  }
+
+                  if (totalGarbage > 0) {
+                      this.garbageCountText.setText(`${totalGarbage}`);
+                  } else {
+                      this.garbageCountText.setText('');
+                  }
               }
 
-              const maxGarbage = 30;
-              const ratio = Math.min(totalGarbage / maxGarbage, 1);
-              const gaugeHeight = ROWS * CELL_SIZE * ratio;
+            createSkillGauge(x, y) {
+                // スキルゲージ背景（下から伸びる）
+                const skillGaugeBottomY = y + ROWS * CELL_SIZE;
+                const skillGaugeBg = this.add.rectangle(
+                    x,
+                    skillGaugeBottomY,
+                    20,
+                    ROWS * CELL_SIZE,
+                    0x333333,
+                    0.3
+                ).setOrigin(0, 1).setDepth(50);
 
-              this.garbageGauge.setSize(20, gaugeHeight);
+                // スキルゲージバー（紫系の色）- 下から上に伸びる
+                this.skillGaugeBar = this.add.rectangle(
+                    x,
+                    skillGaugeBottomY, // 下基準
+                    20,
+                    0,
+                    0x9b59b6, // 紫色
+                    0.9
+                ).setOrigin(0, 1).setDepth(51); // setOrigin(0,1)で左下基準（上向きに伸びる）
+                this.skillGaugeBar.gaugeBottomY = skillGaugeBottomY; // 基準点を保存
 
-              if (totalGarbage > 0) {
-                  this.garbageCountText.setText(`${totalGarbage}`);
-              } else {
-                  this.garbageCountText.setText('');
-              }
-          }
+                // スキルゲージ枠
+                const skillGaugeFrame = this.add.rectangle(
+                    x,
+                    y,
+                    24,
+                    ROWS * CELL_SIZE + 4,
+                    0x000000,
+                    0
+                ).setOrigin(0, 0).setDepth(49);
+                skillGaugeFrame.setStrokeStyle(2, 0x9b59b6);
+
+                // スキルアイコン（ゲージ下部）
+                this.add.text(
+                    x + 10,
+                    y + ROWS * CELL_SIZE + 25,
+                    '⚡',
+                    {
+                        fontSize: '20px',
+                        fontFamily: '"JetBrains Mono"',
+                        fill: '#9b59b6'
+                    }
+                ).setOrigin(0.5).setDepth(52);
+
+                // スキルゲージ数値
+                const max = this.skillGaugeMax || 20;
+                this.skillGaugeText = this.add.text(
+                    x + 10,
+                    y - 15,
+                    `0/${max}`,
+                    {
+                        fontSize: '12px',
+                        fontFamily: '"JetBrains Mono"',
+                        fill: '#9b59b6',
+                        fontStyle: 'bold'
+                    }
+                ).setOrigin(0.5).setDepth(52);
+
+                // 満タン時の光エフェクト（初期は非表示）
+                this.skillGlowEffect = this.add.rectangle(
+                    x + 10,
+                    y + ROWS * CELL_SIZE / 2,
+                    30,
+                    ROWS * CELL_SIZE + 20,
+                    0x9b59b6,
+                    0
+                ).setOrigin(0.5).setDepth(48);
+            }
+
+            updateSkillGauge() {
+                if (!this.skillEnabled) {
+                    console.log('[Skill] Update skipped: skillEnabled is false');
+                    return;
+                }
+                if (!this.skillGaugeBar) {
+                    console.log('[Skill] Update skipped: skillGaugeBar is null');
+                    return;
+                }
+
+                // skillGaugeMaxのデフォルト値を設定
+                const max = this.skillGaugeMax || 20;
+                const current = this.skillGauge || 0;
+                
+                const ratio = Math.min(current / max, 1);
+                const targetHeight = ROWS * CELL_SIZE * ratio;
+                const bottomY = this.skillGaugeBar.gaugeBottomY;
+
+                // アニメーションで高さとy座標を変更（下から上に伸びる）
+                this.tweens.killTweensOf(this.skillGaugeBar);
+                this.tweens.add({
+                    targets: this.skillGaugeBar,
+                    height: targetHeight,
+                    y: bottomY - targetHeight,
+                    duration: 300,
+                    ease: 'Power2'
+                });
+
+                if (this.skillGaugeText) {
+                    this.skillGaugeText.setText(`${current}/${max}`);
+                }
+
+                // 満タン時のエフェクト
+                if (current >= max) {
+                    this.skillGaugeBar.setFillStyle(0xe74c3c); // 赤色に変更
+                    
+                    // 光エフェクトアニメーション
+                    if (this.skillGlowEffect) {
+                        this.tweens.killTweensOf(this.skillGlowEffect);
+                        this.tweens.add({
+                            targets: this.skillGlowEffect,
+                            alpha: { from: 0, to: 0.5 },
+                            duration: 500,
+                            yoyo: true,
+                            repeat: -1
+                        });
+                    }
+                } else {
+                    this.skillGaugeBar.setFillStyle(0x9b59b6); // 紫色に戻す
+                    if (this.skillGlowEffect) {
+                        this.tweens.killTweensOf(this.skillGlowEffect);
+                        this.skillGlowEffect.setAlpha(0);
+                    }
+                }
+            }
+
+            addSkillOjamaCount(count) {
+                if (!this.skillEnabled) {
+                    this.showDebugInfo('Skill disabled');
+                    return;
+                }
+                
+                // skillGaugeMaxのデフォルト値を設定
+                const max = this.skillGaugeMax || 20;
+                
+                // 溢れた場合は複数回発動できるように
+                this.skillGauge = (this.skillGauge || 0) + count;
+                this.totalOjamaCleared += count;
+                
+                this.showDebugInfo(`+${count} Ojama: ${this.skillGauge}/${max}`);
+                
+                // 最大値を超えた回数だけスキル発動（溢れた分は次のゲージに繰り越し）
+                while (this.skillGauge >= max) {
+                    this.showDebugInfo('SKILL ACTIVATED!');
+                    this.activateSkill();
+                    // ゲージをリセットして余った分を保持
+                    this.skillGauge -= max;
+                }
+                
+                this.updateSkillGauge();
+            }
+
+            showDebugInfo(text) {
+                // デバッグ情報を画面に表示
+                if (!this.debugText) {
+                    this.debugText = this.add.text(
+                        this.fieldOffsetX + COLS * CELL_SIZE + 70,
+                        100,
+                        '',
+                        {
+                            fontSize: '12px',
+                            fontFamily: '"JetBrains Mono"',
+                            fill: '#00ff00',
+                            backgroundColor: '#000000'
+                        }
+                    ).setDepth(1000);
+                }
+                this.debugText.setText(text);
+                
+                // 3秒後に消す
+                if (this.debugTimer) this.debugTimer.remove();
+                this.debugTimer = this.time.delayedCall(3000, () => {
+                    if (this.debugText) this.debugText.setText('');
+                });
+            }
+
+            activateSkill() {
+                if (!this.skillEnabled || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+                // スキル発動をサーバーに通知（透明おじゃまぷよを送信）
+                ws.send(JSON.stringify({
+                    type: 'skill_activated'
+                }));
+
+                // ゲージのリセットは addSkillOjamaCount で行う
+
+               // 発動エフェクト
+               this.showSkillActivationEffect();
+           }
+
+           showSkillActivationEffect() {
+               // 画面中央にスキル発動表示
+               const skillText = this.add.text(
+                   this.cameras.main.centerX,
+                   this.cameras.main.centerY,
+                   'SKILL ACTIVATED!',
+                   {
+                       fontSize: '48px',
+                       fontFamily: '"JetBrains Mono"',
+                       fill: '#9b59b6',
+                       fontStyle: 'bold',
+                       stroke: '#ffffff',
+                       strokeThickness: 6
+                   }
+               ).setOrigin(0.5).setDepth(2000);
+
+               this.tweens.add({
+                   targets: skillText,
+                   scale: { from: 0.5, to: 1.5 },
+                   alpha: { from: 1, to: 0 },
+                   duration: 1500,
+                   ease: 'Power2',
+                   onComplete: () => skillText.destroy()
+               });
+           }
+
+            applySkillTransparentPuyos(fromPlayerId, fromPlayerName) {
+                // 自分が発動したスキルは自分には適用しない
+                if (fromPlayerId === myPlayerId) return;
+
+                // 透明おじゃまぷよを2つ追加
+                this.addTransparentPuyos(2);
+
+                // スキル発動者名を表示
+                this.showSkillSender(fromPlayerName);
+            }
+
+            addTransparentPuyos(count) {
+                for (let i = 0; i < count; i++) {
+                    // ランダムな列を選択
+                    const col = Phaser.Math.Between(0, COLS - 1);
+                    
+                    // 一番下の空いている場所を探す
+                    let targetRow = -1;
+                    for (let row = ROWS - 1; row >= 0; row--) {
+                        if (!this.grid[row][col]) {
+                            targetRow = row;
+                            break;
+                        }
+                    }
+                    
+                    if (targetRow >= 0) {
+                        const x = this.fieldOffsetX + col * CELL_SIZE + CELL_SIZE / 2;
+                        const y = targetRow * CELL_SIZE + CELL_SIZE / 2;
+                        
+                        const puyo = this.createTransparentPuyo(x, y);
+                        this.grid[targetRow][col] = puyo;
+                        
+                        this.transparentPuyos.push({
+                            row: targetRow,
+                            col: col,
+                            sprite: puyo,
+                            revealed: false
+                        });
+                    } else {
+                        this.pendingGarbageCount++;
+                    }
+                }
+                
+                this.updateGarbageGauge();
+                this.sendFieldUpdate();
+            }
+
+            createTransparentPuyo(x, y) {
+                // 透明なおじゃまぷよ（完全に見えない）
+                const puyo = this.add.container(x, y);
+                
+                // データは設定するが、ビジュアルは完全に透明
+                puyo.setData('color', 'transparent_gray');
+                puyo.setData('isTransparent', true);
+                puyo.setAlpha(0);
+                puyo.setVisible(false);
+                puyo.setSize(CELL_SIZE, CELL_SIZE);
+                
+                // ただしデバッグ用に薄く見せることも可能
+                // puyo.setAlpha(0.1);
+                // puyo.setVisible(true);
+
+                return puyo;
+            }
+
+            checkTransparentPuyoReveal() {
+                if (!this.transparentPuyos || this.transparentPuyos.length === 0) return;
+                
+                for (let i = this.transparentPuyos.length - 1; i >= 0; i--) {
+                    const tp = this.transparentPuyos[i];
+                    
+                    if (tp.revealed) continue;
+                    if (!this.grid[tp.row] || !this.grid[tp.row][tp.col]) continue;
+                    
+                    const aboveRow = tp.row - 1;
+                    if (aboveRow >= 0) {
+                        const abovePuyo = this.grid[aboveRow][tp.col];
+                        if (abovePuyo) {
+                            const aboveColor = abovePuyo.getData('color');
+                            if (aboveColor && aboveColor !== 'transparent_gray') {
+                                this.revealTransparentPuyo(tp, i);
+                            }
+                        }
+                    }
+                }
+            }
+
+            revealTransparentPuyo(tp, index) {
+                tp.revealed = true;
+                
+                const x = tp.sprite.x;
+                const y = tp.sprite.y;
+                const row = tp.row;
+                const col = tp.col;
+                
+                tp.sprite.destroy();
+                
+                const newPuyo = this.createPuyo(x, y, 'gray', false, 1, false);
+                this.grid[row][col] = newPuyo;
+                
+                newPuyo.setAlpha(0);
+                newPuyo.setVisible(true);
+                this.tweens.add({
+                    targets: newPuyo,
+                    alpha: 1,
+                    duration: 500,
+                    ease: 'Power2'
+                });
+                
+                this.transparentPuyos.splice(index, 1);
+                
+                this.sendFieldUpdate();
+            }
+
+            showSkillSender(playerName) {
+                if (this.skillSenderText) {
+                    this.skillSenderText.destroy();
+                }
+
+                this.skillSenderText = this.add.text(
+                    this.cameras.main.centerX,
+                    100,
+                    `🔮 ${playerName}のスキル！透明おじゃまぷよ出現！`,
+                    {
+                        fontSize: '24px',
+                        fontFamily: '"JetBrains Mono"',
+                        fill: '#9b59b6',
+                        fontStyle: 'bold',
+                        stroke: '#ffffff',
+                        strokeThickness: 4
+                    }
+                ).setOrigin(0.5).setDepth(2000);
+
+                // 3秒後に消去
+                this.time.delayedCall(3000, () => {
+                    if (this.skillSenderText) {
+                        this.skillSenderText.destroy();
+                        this.skillSenderText = null;
+                    }
+                });
+            }
           
           getLowestEmptyRow(col) {
               for (let row = ROWS - 1; row >= 0; row--) {
@@ -2526,75 +3924,85 @@
           }
 
           sendGarbage(amount, sourcePositions) {
-              if (ws && ws.readyState === WebSocket.OPEN) {
-                  const colors = [];
-                  for (let i = 0; i < amount; i++) {
-                      colors.push('gray');
-                  }
+               if (ws && ws.readyState === WebSocket.OPEN) {
+                   const colors = [];
+                   for (let i = 0; i < amount; i++) {
+                       colors.push('gray');
+                   }
 
-                  // ターゲットロック: 連鎖中（2連鎖以上）のみロック
-                  const isInChain = this.chainCount > 1;
-                  
-                  ws.send(JSON.stringify({
-                      type: 'send_garbage',
-                      amount: amount,
-                      colors: colors,
-                      positions: sourcePositions,
-                      lockTarget: isInChain,
-                      currentTarget: this.currentTarget
-                  }));
+                   // ターゲットロック: 連鎖中（2連鎖以上）のみロック
+                   const isInChain = this.chainCount > 1;
+                   
+                   // ターゲット名を取得
+                   let targetName = '';
+                   if (this.currentTarget) {
+                       const targetField = this.opponentFields.get(this.currentTarget);
+                       targetName = targetField && targetField.name ? targetField.name.text : '';
+                   }
+                   
+                   ws.send(JSON.stringify({
+                       type: 'send_garbage',
+                       amount: amount,
+                       colors: colors,
+                       positions: sourcePositions,
+                       lockTarget: isInChain,
+                       currentTarget: this.currentTarget
+                   }));
 
-                  // UIログ追加 (Sent)
-                  this.addGarbageLog(`Sent ${amount}`, 'green');
-              }
-          }
+                   // UIログ追加 (Sent)
+                   this.addGarbageLog(`→ ${amount}`, 'green', targetName);
+               }
+           }
 
-          addGarbageLog(text, color) {
-              if (!this.logContainer) {
-                  this.logContainer = this.add.container(980, 650).setDepth(1000);
-              }
+           addGarbageLog(text, color, playerName) {
+                // ログコンテナがない場合は作成（二試合目以降の対策）
+                if (!this.logContainer || !this.logContainer.active || !this.logContainer.scene) {
+                    this.logContainer = this.add.container(980, 650).setDepth(1000);
+                }
 
-              const logItem = this.add.container(0, 0);
-              const bg = this.add.rectangle(0, 0, 150, 30, color === 'green' ? 0x27ae60 : 0xc0392b, 0.8).setOrigin(1, 0.5);
-              const txt = this.add.text(-10, 0, text, { fontSize: '14px', fill: '#fff', fontWeight: 'bold' }).setOrigin(1, 0.5);
-              logItem.add([bg, txt]);
+               const logItem = this.add.container(0, 0);
+               const displayText = playerName ? `${playerName}: ${text}` : text;
+               const textWidth = Math.max(150, displayText.length * 10);
+               const bg = this.add.rectangle(0, 0, textWidth, 30, color === 'green' ? 0x27ae60 : 0xc0392b, 0.8).setOrigin(1, 0.5);
+               const txt = this.add.text(-10, 0, displayText, { fontSize: '14px', fill: '#fff', fontWeight: 'bold' }).setOrigin(1, 0.5);
+               logItem.add([bg, txt]);
 
-              // 初期位置: 画面外右
-              logItem.x = 200;
-              this.logContainer.add(logItem);
+               // 初期位置: 画面外右
+               logItem.x = textWidth + 50;
+               this.logContainer.add(logItem);
 
-              // 新しいログを一番上にして、既存のものを下にずらす
-              const logs = this.logContainer.list;
-              logs.forEach((item, i) => {
-                  if (item !== logItem) {
-                      this.tweens.add({
-                          targets: item,
-                          y: '+=35',
-                          duration: 300,
-                          ease: 'Power2'
-                      });
-                  }
-              });
+               // 新しいログを一番上にして、既存のものを下にずらす
+               const logs = this.logContainer.list;
+               logs.forEach((item, i) => {
+                   if (item !== logItem) {
+                       this.tweens.add({
+                           targets: item,
+                           y: '+=35',
+                           duration: 300,
+                           ease: 'Power2'
+                       });
+                   }
+               });
 
-              // アニメーション: 右からスライドイン
-              this.tweens.add({
-                  targets: logItem,
-                  x: 0,
-                  duration: 400,
-                  ease: 'Back.easeOut'
-              });
+               // アニメーション: 右からスライドイン
+               this.tweens.add({
+                   targets: logItem,
+                   x: 0,
+                   duration: 400,
+                   ease: 'Back.easeOut'
+               });
 
-              // 3秒待ってから下にフェードアウト
-              this.time.delayedCall(3000, () => {
-                  this.tweens.add({
-                      targets: logItem,
-                      y: '+=50',
-                      alpha: 0,
-                      duration: 500,
-                      onComplete: () => logItem.destroy()
-                  });
-              });
-          }
+               // 3秒待ってから下にフェードアウト
+               this.time.delayedCall(3000, () => {
+                   this.tweens.add({
+                       targets: logItem,
+                       y: '+=50',
+                       alpha: 0,
+                       duration: 500,
+                       onComplete: () => logItem.destroy()
+                   });
+               });
+           }
 
           showMyAttack(targetId, amount, sourcePositions) {
               // ターゲットを記録（ロック用）
@@ -2642,20 +4050,23 @@
           }
 
           receiveGarbage(fromPlayerId, amount, colors, sourcePositions) {
-              // 攻撃元のフィールドを取得
-              const sourceField = this.opponentFields.get(fromPlayerId);
-              if (!sourceField) return;
+               // 攻撃元のフィールドを取得
+               const sourceField = this.opponentFields.get(fromPlayerId);
+               if (!sourceField) return;
 
-              // おじゃまぷよをキューに追加 (設定されたラグ秒後に有効化)
-              const delaySeconds = (this.gameSettings && this.gameSettings.garbageDelay !== undefined) ? this.gameSettings.garbageDelay : 3;
-              this.garbageQueue.push({
-                  amount: amount,
-                  time: this.time.now + (delaySeconds * 1000)
-              });
-              this.updateGarbageGauge();
+               // おじゃまぷよをキューに追加 (設定されたラグ秒後に有効化)
+               const delaySeconds = (this.gameSettings && this.gameSettings.garbageDelay !== undefined) ? this.gameSettings.garbageDelay : 3;
+               this.garbageQueue.push({
+                   amount: amount,
+                   time: this.time.now + (delaySeconds * 1000)
+               });
+               this.updateGarbageGauge();
 
-              // UIログ追加 (Received)
-              this.addGarbageLog(`Received ${amount}`, 'red');
+               // 送信者名を取得
+               const senderName = sourceField.name ? sourceField.name.text : '';
+
+               // UIログ追加 (Received)
+               this.addGarbageLog(`${amount} ←`, 'red', senderName);
 
               // 攻撃元から自分のフィールドへ飛んでくるアニメーション
               sourcePositions.slice(0, amount).forEach((pos, i) => {
@@ -2809,23 +4220,40 @@
                       onComplete: () => {
                           if (puyo && puyo.scene) puyo.destroy();
                       }
-                  });
-              });
-          }
+                   });
+               });
+           }
 
-          async dropGarbagePuyos() {
-              if (this.pendingGarbageCount <= 0) return;
+            async dropGarbagePuyos() {
+               if (this.pendingGarbageCount <= 0) return;
 
-              const dropAmount = Math.min(this.pendingGarbageCount, 30); // 一度に降る最大数
-              this.pendingGarbageCount -= dropAmount;
-              this.updateGarbageGauge();
-              this.sendFieldUpdate(); // 即座に反映
+               const dropAmount = Math.min(this.pendingGarbageCount, 30);
+               this.pendingGarbageCount -= dropAmount;
+               this.updateGarbageGauge();
+               this.sendFieldUpdate();
 
-              // このバッチ内で列ごとに何個落とすか追跡
-              const dropsPerCol = new Array(COLS).fill(0);
-              const promises = [];
+               const isQuickMode = this.animationMode === 'quick';
+               
+               // モードに応じて処理を分岐
+               if (this.garbageMode === 'raise') {
+                   await this.raiseGarbagePuyos(dropAmount);
+               } else {
+                   // 通常の落下モード
+                   await this.dropGarbagePuyosNormal(dropAmount, isQuickMode);
+               }
+               
+               // おじゃまぷよ落下後に透明ぷよをチェック
+               this.checkTransparentPuyoReveal();
+  
+               // 最後に境界チェック
+               this.checkBorderLine();
+            }
+            
+            async dropGarbagePuyosNormal(dropAmount, isQuickMode) {
+               const dropsPerCol = new Array(COLS).fill(0);
+               const promises = [];
 
-              for (let i = 0; i < dropAmount; i++) {
+               for (let i = 0; i < dropAmount; i++) {
                   const col = Phaser.Math.Between(0, COLS - 1);
                   const startY = -CELL_SIZE - (dropsPerCol[col] * CELL_SIZE); // 既にこのバッチで落としている分だけ上から
                   dropsPerCol[col]++;
@@ -2849,31 +4277,174 @@
                   const puyo = this.createPuyo(x, startY, 'gray');
                   puyo.setDepth(15); // プレイヤーの現在操作中のぷよより奥にする
 
+                  const targetY = targetRowEstimate * CELL_SIZE + CELL_SIZE / 2;
+                  
                   const p = new Promise(resolve => {
-                      this.tweens.add({
-                          targets: puyo,
-                          y: targetRowEstimate * CELL_SIZE + CELL_SIZE / 2,
-                          duration: 400 + targetRowEstimate * 20,
-                          ease: 'Bounce.easeOut',
-                          onComplete: () => {
-                              // アニメーション完了時に改めて着地判定
-                              this.finalizeGarbageDrop(puyo, col);
-                              resolve();
-                          }
-                      });
+                      if (isQuickMode) {
+                          // クイックドロップ: 早くて跳ねない
+                          this.tweens.add({
+                              targets: puyo,
+                              y: targetY,
+                              duration: 100,
+                              ease: 'Linear',
+                              onComplete: () => {
+                                  this.finalizeGarbageDrop(puyo, col);
+                                  resolve();
+                              }
+                          });
+                      } else {
+                          // 通常: バウンドアニメーション
+                          this.tweens.add({
+                              targets: puyo,
+                              y: targetY,
+                              duration: 400 + targetRowEstimate * 20,
+                              ease: 'Bounce.easeOut',
+                              onComplete: () => {
+                                  this.finalizeGarbageDrop(puyo, col);
+                                  resolve();
+                              }
+                          });
+                      }
                   });
                   promises.push(p);
 
-                  // 少しずらす（視覚的効果）
-                  await this.delay(50);
+                   // 少しずらす（視覚的効果）
+                   await this.delay(isQuickMode ? 10 : 50);
+               }
+ 
+               // 全てのアニメーション完了を待つ
+               await Promise.all(promises);
+               
+               // クイックモードで落地時にフィールドを振動
+               if (isQuickMode) {
+                   this.shakeField();
+               }
+            }
+            
+              async raiseGarbagePuyos(count) {
+                  // テトリス風：消したぷよ/2 = 段数（全て切り下げ）
+                  
+                  // 段数を計算 - 切り下げ
+                  let totalRows = Math.floor(count / 2);
+                  if (totalRows < 1) totalRows = 1; // 最低1段は出す
+                  
+                  // 最大4段まで一気に出し、残りは保留
+                  let rowsToAdd = Math.min(totalRows, 4);
+                  let remainingRows = totalRows - rowsToAdd;
+                  
+                  // 残りの段数は0.5秒後に送る
+                  if (remainingRows > 0) {
+                      const remainingCount = remainingRows * 2; // 段数×2 = ぷよ数
+                      this.time.delayedCall(500, () => {
+                          this.pendingGarbageCount += remainingCount;
+                          this.updateGarbageGauge();
+                      });
+                  }
+                  
+                  // ゲームオーバーチェック：rowsToAdd行分以上にぷよがある場合
+                  // 最上位のrowsToAdd行が埋まっていたらゲームオーバー
+                  let gameOver = false;
+                  for (let row = 0; row < rowsToAdd; row++) {
+                      for (let col = 0; col < COLS; col++) {
+                          if (this.grid[row][col]) {
+                              gameOver = true;
+                              break;
+                          }
+                      }
+                      if (gameOver) break;
+                  }
+                  
+                  if (gameOver) {
+                      this.endGame();
+                      return;
+                  }
+                  
+                  // 1. 全てのぷよを一時配列にコピー
+                  const tempGrid = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
+                  
+                  // 下から順にぷよを上に移動（rowsToAdd段分）
+                  // 下のrowsToAdd行は消え、全てがrowsToAdd行分上に移動する
+                  for (let row = ROWS - 1; row >= rowsToAdd; row--) {
+                      for (let col = 0; col < COLS; col++) {
+                          if (this.grid[row][col]) {
+                              const newRow = row - rowsToAdd;
+                              tempGrid[newRow][col] = this.grid[row][col];
+                          }
+                      }
+                  }
+                  
+                  // 2. 元のgridをクリア（ぷよオブジェクトはtempGridに保持）
+                  for (let row = 0; row < ROWS; row++) {
+                      for (let col = 0; col < COLS; col++) {
+                          this.grid[row][col] = null;
+                      }
+                  }
+                  
+                  // 3. 上昇したぷよの位置を更新
+                  for (let row = 0; row < ROWS; row++) {
+                      for (let col = 0; col < COLS; col++) {
+                          if (tempGrid[row][col]) {
+                              const puyo = tempGrid[row][col];
+                              puyo.y = row * CELL_SIZE + CELL_SIZE / 2;
+                              this.grid[row][col] = puyo;
+                          }
+                      }
+                  }
+                  
+                  // 4. 下から新しい garbage ぷよを配置（アニメーションなし）
+                  for (let rowOffset = 0; rowOffset < rowsToAdd; rowOffset++) {
+                      const targetRow = ROWS - 1 - rowOffset;
+                      
+                      for (let col = 0; col < COLS; col++) {
+                          const x = this.fieldOffsetX + col * CELL_SIZE + CELL_SIZE / 2;
+                          const y = targetRow * CELL_SIZE + CELL_SIZE / 2;
+                          
+                          const puyo = this.createPuyo(x, y, 'gray');
+                          puyo.setDepth(15);
+                          this.grid[targetRow][col] = puyo;
+                      }
+                  }
+                  
+                  // 5. 振動エフェクト
+                  this.quickShake();
+                  
+                  // 状態を更新
+                  this.sendFieldUpdate();
               }
-
-              // 全てのアニメーション完了を待つ
-              await Promise.all(promises);
-
-              // 最後に境界チェック
-              this.checkBorderLine();
-          }
+            
+             shakeField() {
+               // フィールドを少し振動させる
+               if (this.myFieldBorder) {
+                   const originalX = this.myFieldBorder.x;
+                   this.tweens.add({
+                       targets: this.myFieldBorder,
+                       x: originalX + 3,
+                       duration: 30,
+                       yoyo: true,
+                       repeat: 2,
+                       onComplete: () => {
+                           this.myFieldBorder.x = originalX;
+                       }
+                   });
+               }
+           }
+           
+           quickShake() {
+               // 短く速い振動（上昇モード用）
+               if (this.myFieldBorder) {
+                   const originalX = this.myFieldBorder.x;
+                   this.tweens.add({
+                       targets: this.myFieldBorder,
+                       x: originalX + 4,
+                       duration: 15,
+                       yoyo: true,
+                       repeat: 2,
+                       onComplete: () => {
+                           this.myFieldBorder.x = originalX;
+                       }
+                   });
+               }
+           }
 
           finalizeGarbageDrop(puyo, col) {
                // 最新のグリッド状況で空き場所を探す
@@ -3186,10 +4757,15 @@
                    field.border = this.add.rectangle(x + fieldWidth/2, y + field.height/2, fieldWidth+4, field.height+4, 0x000000, 0).setOrigin(0.5).setStrokeStyle(4, 0x2c3e50);
                    field.name = this.add.text(x + fieldWidth/2, y - 20, player.name, { fontSize: '24px', fontFamily: '"JetBrains Mono"', fill: '#333', fontStyle: 'bold' }).setOrigin(0.5);
                    
-                   // おじゃまぷよゲージ (Scale 1.0位置)
-                   field.garbageGaugeBg = this.add.rectangle(x + fieldWidth + 20, y + 200, 20, 400, 0x000000, 0.3).setOrigin(0, 0);
-                   field.garbageGauge = this.add.rectangle(x + fieldWidth + 20, y + 600, 20, 0, 0xff0000).setOrigin(0, 1);
-                   field.garbageCountText = this.add.text(x + fieldWidth + 20, y + 610, '0', { fontSize: '16px', fill: '#fff' }).setOrigin(0, 0);
+                    // おじゃまぷよゲージ (上に伸びる)
+                    field.garbageGaugeBg = this.add.rectangle(x + fieldWidth + 20, y, 20, ROWS * CELL_SIZE, 0x333333, 0.3).setOrigin(0, 0);
+                    field.garbageGauge = this.add.rectangle(x + fieldWidth + 20, y, 20, 0, 0xff6b6b, 0.8).setOrigin(0, 0);
+                    field.garbageCountText = this.add.text(x + fieldWidth + 30, y - 15, '', { 
+                        fontSize: '16px', 
+                        fontFamily: '"JetBrains Mono"',
+                        fill: '#ff6b6b',
+                        fontStyle: 'bold'
+                    }).setOrigin(0.5);
 
                    this.opponentFields.set(player.id, field);
                  });
@@ -3378,21 +4954,28 @@
                   }
               }
 
-              // Update Garbage Gauge
-              if (garbageCount !== undefined) {
-                   const maxGarbage = 30; // 5 lines * 6 = 30
-                   const ratio = Math.min(garbageCount / maxGarbage, 1);
-                   const gaugeHeight = (ROWS * CELL_SIZE) * ratio;
-                   if (field.garbageGauge) {
-                       field.garbageGauge.height = gaugeHeight;
-                   }
-                   if (field.garbageCountText) {
-                       field.garbageCountText.setText(garbageCount > 0 ? garbageCount.toString() : '');
-                   }
-              }
-          }
+              // Update Garbage Gauge (全モード共通) - アニメーション付き
+               if (garbageCount !== undefined && field.garbageGauge) {
+                    const maxGarbage = 30; // 5 lines * 6 = 30
+                    const ratio = Math.min(garbageCount / maxGarbage, 1);
+                    const scale = field.scale || 1;
+                    const gaugeHeight = (ROWS * CELL_SIZE * scale) * ratio;
+                    
+                    if (field.garbageGauge) {
+                        this.tweens.add({
+                            targets: field.garbageGauge,
+                            height: gaugeHeight,
+                            duration: 300,
+                            ease: 'Power2'
+                        });
+                    }
+                     if (field.garbageCountText) {
+                         field.garbageCountText.setText(garbageCount > 0 ? garbageCount.toString() : '');
+                     }
+                 }
+            }
 
-          updateOpponentPiece(playerId, data) {
+           updateOpponentPiece(playerId, data) {
               const field = this.opponentFields.get(playerId);
               if (!field) return;
               
@@ -3549,15 +5132,46 @@
                   ).setOrigin(0.5);
                   field.border.setStrokeStyle(2, 0x95a5a6);
                   
-                  // プレイヤー名
-                  field.name = this.add.text(x + fieldWidth / 2, y - 15, player.name, {
-                      fontSize: '12px',
-                      fontFamily: '"JetBrains Mono"',
-                      fill: '#333',
-                      fontStyle: 'bold'
-                  }).setOrigin(0.5);
-                  
-                  this.opponentFields.set(player.id, field);
+                   // プレイヤー名
+                   field.name = this.add.text(x + fieldWidth / 2, y - 15, player.name, {
+                       fontSize: '12px',
+                       fontFamily: '"JetBrains Mono"',
+                       fill: '#333',
+                       fontStyle: 'bold'
+                   }).setOrigin(0.5);
+                   
+                   // おじゃまぷよゲージ（観戦モードでも表示）
+                   field.garbageGaugeBg = this.add.rectangle(
+                       x + fieldWidth + 5,
+                       y,
+                       8,
+                       fieldHeight,
+                       0x333333,
+                       0.3
+                   ).setOrigin(0, 0).setDepth(50);
+                   
+                   field.garbageGauge = this.add.rectangle(
+                       x + fieldWidth + 5,
+                       y,
+                       8,
+                       0,
+                       0xff6b6b,
+                       0.8
+                   ).setOrigin(0, 0).setDepth(51);
+                   
+                   field.garbageCountText = this.add.text(
+                       x + fieldWidth + 9,
+                       y - 10,
+                       '',
+                       {
+                           fontSize: '10px',
+                           fontFamily: '"JetBrains Mono"',
+                           fill: '#ff6b6b',
+                           fontStyle: 'bold'
+                       }
+                   ).setOrigin(0.5).setDepth(52);
+                   
+                   this.opponentFields.set(player.id, field);
               });
           }
           
@@ -3699,68 +5313,9 @@
                   
                   this.tweens.add({ targets: waitingText, alpha: 1, duration: 400, delay: 800 + scoreboard.length * 200 + 500 });
               }
-          }
+           }
 
-          collapseMyField() {
-              console.log('=== collapseMyField (second definition) CALLED ===');
-              const duration = 2000;
-              const fallDistance = 1500;
-              
-              const frameElements = [];
-              const puyoElements = [];
-              
-              // 枠と背景
-              if (this.myFieldBorder) frameElements.push(this.myFieldBorder);
-              this.children.list.forEach(child => {
-                  if (child.getData && (child.getData('myField') || child.getData('myFieldBorder'))) {
-                      frameElements.push(child);
-                  }
-              });
-              
-              // グリッド内のぷよを明示的に収集
-              for (let row = 0; row < ROWS; row++) {
-                  for (let col = 0; col < COLS; col++) {
-                      if (this.grid[row][col] && this.grid[row][col].active) {
-                          puyoElements.push(this.grid[row][col]);
-                      }
-                  }
-              }
-              
-              // UI要素
-              const uiElements = [this.scoreText, this.chainText, this.nextContainer, this.garbageGaugeBg, this.garbageGauge, this.garbageCountText, this.comboText];
-              uiElements.forEach(el => {
-                 if(el) frameElements.push(el);
-              });
-              
-              console.log('Scattering - Frame elements:', frameElements.length, 'Puyos:', puyoElements.length);
-              
-              // 個別にランダムな横移動と回転を適用
-              const applyScatter = (targets) => {
-                  targets.forEach(element => {
-                      if (!element || !element.active) return;
-                      
-                      const vx = (Math.random() - 0.5) * 1000; // Random horizontal velocity
-                      const rot = (Math.random() - 0.5) * 60;  // Random rotation
-                      
-                      this.tweens.add({
-                          targets: element,
-                          props: {
-                              x: { value: element.x + vx, duration: duration, ease: 'Linear' },
-                              y: { value: element.y + fallDistance, duration: duration, ease: 'Cubic.easeIn' },
-                              angle: { value: (element.angle || 0) + rot, duration: duration, ease: 'Linear' }
-                          },
-                          onComplete: () => {
-                              if (element && element.active) element.destroy();
-                          }
-                      });
-                  });
-              };
-              
-              applyScatter(frameElements);
-              applyScatter(puyoElements);
-          }
-
-          showMessage(text) {
+           showMessage(text) {
               const message = this.add.text(
                   this.cameras.main.centerX,
                   this.cameras.main.centerY,
@@ -3800,26 +5355,66 @@
               }
           }
 
-          resetGame() {
-              this.gameStarted = false;
-              this.score = 0;
-              this.gameOver = false;
-              this.isMoving = false;
-              this.chainCount = 0;
-              this.pendingGarbage = [];
-              this.players = [];
-              this.alivePlayers = [];
+           resetGame() {
+               // タイマーをクリア
+               if (this.dropTimer) {
+                   this.dropTimer.remove();
+                   this.dropTimer = null;
+               }
+               if (this.defeatTimer) {
+                   this.defeatTimer.remove();
+                   this.defeatTimer = null;
+               }
+               if (this.lockDelayTimer) {
+                   this.lockDelayTimer.remove();
+                   this.lockDelayTimer = null;
+               }
+               
+               this.gameStarted = false;
+               this.score = 0;
+               this.gameOver = false;
+               this.isMoving = false;
+               this.isBoardAnimating = false;
+               this.chainCount = 0;
+               this.comboCount = 0;
+               this.pendingGarbageCount = 0;
+               this.garbageQueue = [];
+               this.currentPair = null;
+               this.nextPair = null;
+               this.players = [];
+               this.alivePlayers = [];
+               this.currentTarget = null;
+               this.lastPlacementCleared = false;
+               
+                // スキル関連のリセット
+                this.skillGauge = 0;
+                this.totalOjamaCleared = 0;
+                if (this.skillSenderText) {
+                    this.skillSenderText.destroy();
+                    this.skillSenderText = null;
+                }
+                if (this.skillEffectTimer) {
+                    this.skillEffectTimer.remove();
+                    this.skillEffectTimer = null;
+                }
+                this.skillGaugeBar = null;
+                this.skillGaugeText = null;
+                this.skillGlowEffect = null;
+                this.transparentPuyos = [];
 
-              this.children.removeAll(true);
-              this.opponentFields.clear();
+               // ログコンテナは保持（途切れないように）
+               // this.logContainer はリセットしない
+               
+               this.children.removeAll(true);
+               this.opponentFields.clear();
 
-              for (let row = 0; row < ROWS; row++) {
-                  this.grid[row] = [];
-                  for (let col = 0; col < COLS; col++) {
-                      this.grid[row][col] = null;
-                  }
-              }
-          }
+               for (let row = 0; row < ROWS; row++) {
+                   this.grid[row] = [];
+                   for (let col = 0; col < COLS; col++) {
+                       this.grid[row][col] = null;
+                   }
+               }
+           }
       }
 
       let game = null;

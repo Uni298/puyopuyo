@@ -30,14 +30,38 @@ function startBot(token, serverData) {
     client.on(Events.MessageCreate, async message => {
         if (message.author.bot) return;
 
-        if (message.content.startsWith('!puyo')) {
-            const args = message.content.split(' ');
+        const args = message.content.split(' ');
+        const command = args[0].toLowerCase();
+
+        if (command === '!puyo') {
             if (args.length < 2) {
                 return message.reply('Usage: `!puyo <RoomCode>`');
             }
-
             const roomCode = args[1];
             await sendRoomInfo(message.channel, roomCode);
+            return;
+        }
+
+        if (command === '!rooms') {
+            await listRooms(message.channel);
+            return;
+        }
+
+        if (command === '!rules') {
+            await sendRules(message.channel);
+            return;
+        }
+
+        if (command === '!settings') {
+            if (args.length < 2) {
+                return message.reply('Usage: `!settings <RoomCode>`');
+            }
+            await sendRoomSettings(message.channel, args[1]);
+            return;
+        }
+
+        if (command === '!top') {
+            await sendTopScores(message.channel);
             return;
         }
 
@@ -78,38 +102,64 @@ async function sendRoomInfo(channel, roomCode) {
 
     const room = serverDataReference.rooms.get(roomCode);
     const playerCount = room.players.length;
-    // Initial List
+    
     const playerList = Array.from(room.playerStates.values()).map(p => {
-         return `**${p.name}**: ${p.isSpectator ? '👁️ Spectator' : (p.ready ? '✅ Ready' : '⏳ Waiting')}`;
+         let icon = p.isBot ? '🤖' : '👤';
+         let status = p.isSpectator ? '👁️ Spectator' : (p.ready ? '✅ Ready' : '⏳ Waiting');
+         return `${icon} **${p.name}**: ${status}`;
     }).join('\n') || 'None';
 
-    const baseUrl = process.env.BASE_URL || 'http://localhost:3000'; 
+    const baseUrl = process.env.BASE_URL || 'https://k2011.tail796c0a.ts.net'; 
     const gameUrl = `${baseUrl}?room=${roomCode}`;
 
     const embed = new EmbedBuilder()
-        .setColor(0x0099FF)
-        .setTitle(`Puyo Puyo Battle Royale - Room ${roomCode}`)
-        .setDescription(`**Status**: 🟢 Waiting for Players\n\n**Players (${playerCount})**:\n${playerList}`)
-        .addFields({ name: 'Join Link', value: gameUrl });
+        .setColor(0x00FF00) // Green for new
+        .setTitle(`🎮 Puyo Puyo Room: ${roomCode}`)
+        .setThumbnail("https://raw.githubusercontent.com/google/material-design-icons/master/png/action/videogame_asset/materialicons/48dp/1x/baseline_videogame_asset_black_48dp.png") // Generic game icon
+        .setDescription(`**Status**: 🟢 Lobby Open\n\n**Players (${playerCount}/8)**:\n${playerList}`)
+        .addFields({ name: 'Join the Battle!', value: `[Click here to play](${gameUrl})` })
+        .setFooter({ text: "Type !puyo <RoomCode> to refresh this view." })
+        .setTimestamp();
 
     const row = new ActionRowBuilder()
         .addComponents(
             new ButtonBuilder()
-                .setLabel('Go to Game Page')
+                .setLabel('🎮 Play Now')
                 .setStyle(ButtonStyle.Link)
                 .setURL(gameUrl),
             new ButtonBuilder()
                 .setCustomId(`join_${roomCode}`)
-                .setLabel('Request to Join')
+                .setLabel('🤝 Request Invite')
                 .setStyle(ButtonStyle.Primary),
             new ButtonBuilder()
                 .setCustomId(`notify_${roomCode}`)
-                .setLabel('Notify on End')
+                .setLabel('🔔 Notify End')
                 .setStyle(ButtonStyle.Secondary)
         );
 
     const message = await channel.send({ embeds: [embed], components: [row] });
     roomMessages.set(roomCode, { channelId: channel.id, messageId: message.id });
+}
+
+async function listRooms(channel) {
+    if (!serverDataReference || serverDataReference.rooms.size === 0) {
+        return channel.send("No active rooms at the moment. Create one at the game site!");
+    }
+
+    const embed = new EmbedBuilder()
+        .setColor(0x4A90E2)
+        .setTitle("🏢 Active Puyo Puyo Rooms")
+        .setTimestamp();
+
+    let roomDesc = "";
+    serverDataReference.rooms.forEach((room, code) => {
+        const status = room.gameStarted ? "🔥 Playing" : "🟢 Lobby";
+        const players = room.players.length;
+        roomDesc += `\`${code}\` - **${status}** (${players} players)\n`;
+    });
+
+    embed.setDescription(roomDesc || "No rooms found.");
+    channel.send({ embeds: [embed] });
 }
 
 async function updateRoomInfo(roomCode) {
@@ -135,38 +185,42 @@ async function updateRoomInfo(roomCode) {
 
         const playerCount = room.players.length;
         const playerList = Array.from(room.playerStates.values()).map(p => {
+             let icon = p.isBot ? '🤖' : '👤';
              let status = '';
              if (p.isSpectator) status = '👁️ Spectator';
              else if (!room.gameStarted) status = p.ready ? '✅ Ready' : '⏳ Waiting';
              else status = p.alive ? '❤️ Alive' : '💀 Dead';
-             return `**${p.name}**: ${status}`;
+             return `${icon} **${p.name}**: ${status}`;
         }).join('\n') || 'None';
 
         const statusText = room.gameStarted ? '🔥 In Progress' : '🟢 Waiting for Players';
         const color = room.gameStarted ? 0xFF5555 : 0x0099FF;
 
-        const baseUrl = process.env.BASE_URL || 'http://localhost:3000'; 
+        const baseUrl = process.env.BASE_URL || 'https://k2011.tail796c0a.ts.net'; 
         const gameUrl = `${baseUrl}?room=${roomCode}`;
 
         const embed = new EmbedBuilder()
             .setColor(color)
-            .setTitle(`Puyo Puyo Battle Royale - Room ${roomCode}`)
-            .setDescription(`**Status**: ${statusText}\n\n**Players (${playerCount})**:\n${playerList}`)
-            .addFields({ name: 'Join Link', value: gameUrl });
+            .setTitle(`🎮 Puyo Puyo Room: ${roomCode}`)
+            .setThumbnail("https://raw.githubusercontent.com/google/material-design-icons/master/png/action/videogame_asset/materialicons/48dp/1x/baseline_videogame_asset_black_48dp.png")
+            .setDescription(`**Status**: ${statusText}\n\n**Players (${playerCount}/8)**:\n${playerList}`)
+            .addFields({ name: 'Join the Battle!', value: `[Click here to play](${gameUrl})` })
+            .setFooter({ text: "Type !puyo <RoomCode> to refresh this view." })
+            .setTimestamp();
             
          const row = new ActionRowBuilder()
             .addComponents(
                 new ButtonBuilder()
-                    .setLabel('Go to Game Page')
+                    .setLabel('🎮 Play Now')
                     .setStyle(ButtonStyle.Link)
                     .setURL(gameUrl),
                 new ButtonBuilder()
                     .setCustomId(`join_${roomCode}`)
-                    .setLabel('Request to Join')
+                    .setLabel('🤝 Request Invite')
                     .setStyle(ButtonStyle.Primary),
                 new ButtonBuilder()
                     .setCustomId(`notify_${roomCode}`)
-                    .setLabel('Notify on End')
+                    .setLabel('🔔 Notify End')
                     .setStyle(ButtonStyle.Secondary)
             );
 
@@ -258,4 +312,93 @@ async function sendChatMessage(roomCode, sender, content) {
     }
 }
 
-module.exports = { startBot, notifyGameEnd, updateRoomInfo, onRoomClosed, sendChatMessage };
+async function notifyRoomCreated(roomCode) {
+    // Find the first channel the bot is in to announce
+    if (!client) return;
+    const guild = client.guilds.cache.first();
+    if (!guild) return;
+    const channel = guild.channels.cache.find(c => c.name === 'puyo-updates' || (c.type === 0 && c.permissionsFor(guild.members.me).has('SendMessages')));
+    
+    if (channel) {
+        const embed = new EmbedBuilder()
+            .setColor(0x00FF00)
+            .setTitle("🆕 New Room Created!")
+            .setDescription(`A new game room \`${roomCode}\` is now open.\nType \`!puyo ${roomCode}\` to see details or join!`)
+            .setTimestamp();
+        channel.send({ embeds: [embed] });
+    }
+}
+
+async function notifyGameStart(roomCode) {
+    if (!roomMessages.has(roomCode)) return;
+    const { channelId } = roomMessages.get(roomCode);
+    
+    const channel = await client.channels.fetch(channelId);
+    if (channel) {
+        channel.send(`🚀 **Game Started in Room ${roomCode}!** Let the battle begin!`);
+    }
+}
+
+async function sendRules(channel) {
+    const embed = new EmbedBuilder()
+        .setColor(0x00D9FF)
+        .setTitle("📖 Puyo Puyo Rules & Controls")
+        .setDescription("Learn how to play and dominate the field!")
+        .addFields(
+            { name: "⌨️ Keyboard Controls", value: "• **Arrow Keys / WASD**: Move & Rotate\n• **Space / Up**: Rotation\n• **Shift / Down**: Hard Drop" },
+            { name: "📱 Touch Controls", value: "• **Tap**: Rotate\n• **Swipe Left/Right**: Move\n• **Swipe Down**: Soft Drop\n• **Diagonal Down Swipe**: Hard Drop" },
+            { name: "💡 Basics", value: "• Match 4 or more puyos of the same color to clear them.\n• Chain clears to send garbage to your opponents!\n• If your center column fills to the top, you lose." }
+        )
+        .setFooter({ text: "Happy Puyo-ing!" });
+    
+    await channel.send({ embeds: [embed] });
+}
+
+async function sendRoomSettings(channel, roomCode) {
+    if (!serverDataReference || !serverDataReference.rooms.has(roomCode)) {
+        return channel.send(`Room \`${roomCode}\` not found.`);
+    }
+
+    const room = serverDataReference.rooms.get(roomCode);
+    const settings = room.settings;
+
+    const embed = new EmbedBuilder()
+        .setColor(0xFFD700)
+        .setTitle(`⚙️ Settings for Room: ${roomCode}`)
+        .addFields(
+            { name: "Garbage Rate", value: `${settings.garbageRate}`, inline: true },
+            { name: "Drop Speed", value: `${settings.dropSpeed}ms`, inline: true },
+            { name: "Defeat Time", value: `${settings.defeatTime}s`, inline: true },
+            { name: "Garbage Delay", value: `${settings.garbageDelay}s`, inline: true }
+        )
+        .setTimestamp();
+
+    await channel.send({ embeds: [embed] });
+}
+
+async function sendTopScores(channel) {
+    if (!serverDataReference) return;
+
+    // We'll need to gather high scores from active rooms as a simple implementation
+    let allScores = [];
+    serverDataReference.rooms.forEach(room => {
+        room.playerStates.forEach(state => {
+            allScores.push({ name: state.name, score: state.score });
+        });
+    });
+
+    allScores.sort((a, b) => b.score - a.score);
+    const top5 = allScores.slice(0, 5);
+
+    const embed = new EmbedBuilder()
+        .setColor(0xFF8C00)
+        .setTitle("🏆 Session High Scores (Top 5)")
+        .setDescription(top5.length > 0 ? 
+            top5.map((s, i) => `${i + 1}. **${s.name}**: ${s.score} pts`).join('\n') : 
+            "No scores recorded yet in this session.")
+        .setTimestamp();
+
+    await channel.send({ embeds: [embed] });
+}
+
+module.exports = { startBot, notifyGameEnd, updateRoomInfo, onRoomClosed, sendChatMessage, notifyRoomCreated, notifyGameStart };

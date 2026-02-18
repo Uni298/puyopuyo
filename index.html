@@ -1260,11 +1260,20 @@
       function copyDiscordCommand() {
           if (!currentRoom) return;
           const cmd = `!puyo ${currentRoom}`;
+          const btn = document.getElementById('copyDiscordCmdBtn');
+          const originalText = btn.textContent;
+          const originalBg = btn.style.background;
+          
+          // コピー成功 feedback
           navigator.clipboard.writeText(cmd).then(() => {
-              alert('Discord用コマンドをコピーしました:\n' + cmd);
+              btn.textContent = 'コピーしました!';
+              btn.style.background = '#27ae60';
+              setTimeout(() => {
+                  btn.textContent = originalText;
+                  btn.style.background = originalBg;
+              }, 3000);
           }).catch(err => {
               console.error('Copy failed', err);
-              prompt('コピーしてください:', cmd);
           });
       }
 
@@ -1452,10 +1461,10 @@
                          holdEnabledInput.disabled = !isMyHost;
                         // garbagePrediction disabled logic removed
 
-                        // Discordボタンの表示切替
+                         // Discordボタンは全員に表示
                         const discordBtn = document.getElementById('copyDiscordCmdBtn');
                         if (discordBtn) {
-                            discordBtn.style.display = isMyHost ? 'inline-block' : 'none';
+                            discordBtn.style.display = 'inline-block';
                         }
                         
                          // ホスト権限更新
@@ -1817,6 +1826,11 @@
           document.getElementById('mainMenu').classList.add('hidden');
           document.getElementById('waitingRoom').classList.remove('hidden');
           document.getElementById('roomCode').textContent = roomCode;
+          // Discordボタンを表示
+          const discordBtn = document.getElementById('copyDiscordCmdBtn');
+          if (discordBtn) {
+              discordBtn.style.display = 'inline-block';
+          }
       }
 
       function hideWaitingRoom() {

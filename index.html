@@ -302,6 +302,73 @@
           </div>
       </div>
 
+      <!-- キー設定モーダル -->
+      <div id="keySettingsModal" class="hidden" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(255, 255, 255, 0.98); padding: 40px; border-radius: 20px; text-align: center; color: #333; z-index: 1001; min-width: 400px; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2); border: 1px solid rgba(0, 0, 0, 0.1);">
+          <h2>キー設定</h2>
+          <p style="font-size: 14px; color: #666; margin: 15px 0;">各操作に対応するキーを設定してください。<br>ボタンをクリックしてからキーを押してください。</p>
+          
+          <div id="keySettingsContainer" style="margin: 20px 0; text-align: left; max-width: 350px; margin-left: auto; margin-right: auto;">
+              <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                  <span>左移動:</span>
+                  <div>
+                      <button id="keyBtnLeft1" class="btn key-setting-btn" data-action="left" data-index="0" style="min-width: 60px; font-size: 12px; padding: 6px 10px; background: #3498db;">-</button>
+                      <button id="keyBtnLeft2" class="btn key-setting-btn" data-action="left" data-index="1" style="min-width: 60px; font-size: 12px; padding: 6px 10px; background: #3498db;">-</button>
+                  </div>
+              </div>
+              <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                  <span>右移動:</span>
+                  <div>
+                      <button id="keyBtnRight1" class="btn key-setting-btn" data-action="right" data-index="0" style="min-width: 60px; font-size: 12px; padding: 6px 10px; background: #3498db;">-</button>
+                      <button id="keyBtnRight2" class="btn key-setting-btn" data-action="right" data-index="1" style="min-width: 60px; font-size: 12px; padding: 6px 10px; background: #3498db;">-</button>
+                  </div>
+              </div>
+              <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                  <span>下移動:</span>
+                  <div>
+                      <button id="keyBtnDown1" class="btn key-setting-btn" data-action="down" data-index="0" style="min-width: 60px; font-size: 12px; padding: 6px 10px; background: #3498db;">-</button>
+                      <button id="keyBtnDown2" class="btn key-setting-btn" data-action="down" data-index="1" style="min-width: 60px; font-size: 12px; padding: 6px 10px; background: #3498db;">-</button>
+                  </div>
+              </div>
+              <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                  <span>回転:</span>
+                  <div>
+                      <button id="keyBtnRotate1" class="btn key-setting-btn" data-action="rotate" data-index="0" style="min-width: 60px; font-size: 12px; padding: 6px 10px; background: #3498db;">-</button>
+                      <button id="keyBtnRotate2" class="btn key-setting-btn" data-action="rotate" data-index="1" style="min-width: 60px; font-size: 12px; padding: 6px 10px; background: #3498db;">-</button>
+                  </div>
+              </div>
+              <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                  <span>逆回転:</span>
+                  <div>
+                      <button id="keyBtnRotateCCW1" class="btn key-setting-btn" data-action="rotateCCW" data-index="0" style="min-width: 60px; font-size: 12px; padding: 6px 10px; background: #3498db;">-</button>
+                      <button id="keyBtnRotateCCW2" class="btn key-setting-btn" data-action="rotateCCW" data-index="1" style="min-width: 60px; font-size: 12px; padding: 6px 10px; background: #3498db;">-</button>
+                  </div>
+              </div>
+              <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                  <span>ホールド:</span>
+                  <div>
+                      <button id="keyBtnHold1" class="btn key-setting-btn" data-action="hold" data-index="0" style="min-width: 60px; font-size: 12px; padding: 6px 10px; background: #3498db;">-</button>
+                      <button id="keyBtnHold2" class="btn key-setting-btn" data-action="hold" data-index="1" style="min-width: 60px; font-size: 12px; padding: 6px 10px; background: #3498db;">-</button>
+                  </div>
+              </div>
+              <div style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                  <span>ハードドロップ:</span>
+                  <div>
+                      <button id="keyBtnHardDrop1" class="btn key-setting-btn" data-action="hardDrop" data-index="0" style="min-width: 60px; font-size: 12px; padding: 6px 10px; background: #e74c3c;">-</button>
+                      <button id="keyBtnHardDrop2" class="btn key-setting-btn" data-action="hardDrop" data-index="1" style="min-width: 60px; font-size: 12px; padding: 6px 10px; background: #e74c3c;">-</button>
+                  </div>
+              </div>
+          </div>
+
+          <div id="keyInputPrompt" class="hidden" style="margin: 20px 0; padding: 15px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px; color: #856404;">
+              <p style="margin: 0; font-weight: bold;">キーを入力してください...</p>
+          </div>
+
+          <div>
+              <button class="btn" onclick="saveKeyPreset()" style="background: #2ecc71;">プリセットを保存</button>
+              <button class="btn" onclick="closeKeySettingsModal()" style="background: #e74c3c;">閉じる</button>
+          </div>
+      </div>
+
       <div id="waitingRoom" class="hidden">
         <h2>ルームコード</h2>
         <div id="roomCode"></div>
@@ -334,6 +401,12 @@
                     <option value="drop">落下（通常）</option>
                     <option value="raise">上昇（テトリス風）</option>
                 </select>
+            </div>
+            <div style="margin-bottom: 8px;">
+                <label for="holdEnabled">
+                    <input type="checkbox" id="holdEnabled" checked>
+                    ホールド機能
+                </label>
             </div>
             <div>
                 <label for="defeatTime">敗北猶予: </label>
@@ -389,8 +462,13 @@
           準備完了
         </button>
         <br />
+        <button id="forceStartBtn" class="btn" onclick="forceStartGame()" style="background: #e74c3c; display: none;">
+          強制開始
+        </button>
+        <br />
         <button class="btn" onclick="leaveRoom()">退出</button>
         <button class="btn" onclick="openSettingsModal()" style="background: #6c757d;">スワイプ設定</button>
+        <button class="btn" onclick="openKeySettingsModal()" style="background: #6c757d;">キー設定</button>
         
         <!-- チャット -->
         <div style="margin-top: 20px; background: rgba(255,255,255,0.1); padding: 15px; border-radius: 10px;">
@@ -444,7 +522,7 @@
       let allPlayers = [];
 
       // スワイプ設定関連
-      const PRESETS_STORAGE_KEY = 'puyoSwipePresets';
+      const PRESETS_STORAGE_KEY = 'puyopuyo_presets';
       let swipeSettings = {
           threshold: 20, // Default value
           boundaries: [45, 135, 225, 315] // R/D, D/L, L/U, U/R
@@ -962,6 +1040,147 @@
           draw();
       }
 
+      // キー設定関連
+      let keySettings = {
+          left: ['ArrowLeft'],
+          right: ['ArrowRight'],
+          down: ['ArrowDown'],
+          rotate: ['ArrowUp'],
+          rotateCCW: ['KeyZ'],
+          hold: ['ShiftLeft'],
+          hardDrop: ['Space', 'ArrowDown']
+      };
+
+      let currentKeyAction = null;
+
+      function openKeySettingsModal() {
+          loadKeySettings();
+          updateKeySettingsUI();
+          document.getElementById('keySettingsModal').classList.remove('hidden');
+          setupKeySettingListeners();
+      }
+
+      function closeKeySettingsModal() {
+          document.getElementById('keySettingsModal').classList.add('hidden');
+          currentKeyAction = null;
+          document.getElementById('keyInputPrompt').classList.add('hidden');
+      }
+
+      function disableSettingsInputs() {
+          const inputs = ['garbageRate', 'dropSpeed', 'defeatTime', 'garbageDelay', 'skillEnabled', 'skillRequiredCount', 'animationMode', 'garbageMode', 'holdEnabled'];
+          inputs.forEach(id => {
+              const el = document.getElementById(id);
+              if (el) el.disabled = true;
+          });
+      }
+
+      function enableSettingsInputs() {
+          const inputs = ['garbageRate', 'dropSpeed', 'defeatTime', 'garbageDelay', 'skillEnabled', 'skillRequiredCount', 'animationMode', 'garbageMode', 'holdEnabled'];
+          inputs.forEach(id => {
+              const el = document.getElementById(id);
+              if (el) el.disabled = false;
+          });
+      }
+
+      function setupKeySettingListeners() {
+          const buttons = document.querySelectorAll('.key-setting-btn');
+          buttons.forEach(btn => {
+              btn.onclick = () => startKeyRecording(btn.dataset.action, parseInt(btn.dataset.index));
+          });
+      }
+
+      function startKeyRecording(action, index) {
+          currentKeyAction = { action, index };
+          document.getElementById('keyInputPrompt').classList.remove('hidden');
+          
+          // キー入力を待つ
+          const handleKeyDown = (e) => {
+              e.preventDefault();
+              if (!keySettings[action]) {
+                  keySettings[action] = ['', ''];
+              }
+              keySettings[action][index] = e.code;
+              updateKeySettingsUI();
+              document.getElementById('keyInputPrompt').classList.add('hidden');
+              currentKeyAction = null;
+              document.removeEventListener('keydown', handleKeyDown);
+          };
+          
+          document.addEventListener('keydown', handleKeyDown, { once: true });
+      }
+
+      function updateKeySettingsUI() {
+          const actions = ['left', 'right', 'down', 'rotate', 'rotateCCW', 'hold', 'hardDrop'];
+          actions.forEach(action => {
+              const keys = keySettings[action] || ['', ''];
+              for (let i = 0; i < 2; i++) {
+                  const btn = document.getElementById(`keyBtn${action.charAt(0).toUpperCase() + action.slice(1)}${i + 1}`);
+                  if (btn) {
+                      btn.textContent = getKeyDisplayName(keys[i]);
+                  }
+              }
+          });
+      }
+
+      function getKeyDisplayName(code) {
+          if (!code) return '-';
+          const displayMap = {
+              'ArrowLeft': '←',
+              'ArrowRight': '→',
+              'ArrowDown': '↓',
+              'ArrowUp': '↑',
+              'Space': 'Space',
+              'KeyZ': 'Z',
+              'ShiftLeft': 'Shift',
+              'ShiftRight': 'Shift'
+          };
+          return displayMap[code] || code;
+      }
+
+      function saveKeyPreset() {
+          try {
+              const playerName = document.getElementById('playerNameInput').value.trim();
+              if (!playerName) {
+                  alert('プリセットを保存するには名前を入力してください。');
+                  return;
+              }
+              // LocalStorageに保存
+              const presets = JSON.parse(localStorage.getItem(PRESETS_STORAGE_KEY) || '{}');
+              if (!presets[playerName]) presets[playerName] = {};
+              presets[playerName].keySettings = { ...keySettings };
+              localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(presets));
+              
+              // サーバーにも保存（接続済みの場合）
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({
+                      type: 'save_preset',
+                      playerName: playerName,
+                      keySettings: keySettings
+                  }));
+              }
+              
+              showNotification(`'${playerName}' のキー設定を保存しました`, 3000);
+          } catch (e) {
+              console.error('Failed to save key preset:', e);
+              alert('プリセットの保存に失敗しました。');
+          }
+      }
+
+      function loadKeySettings() {
+          try {
+              const playerName = document.getElementById('playerNameInput').value.trim();
+              if (playerName) {
+                  const presets = JSON.parse(localStorage.getItem(PRESETS_STORAGE_KEY) || '{}');
+                  const preset = presets[playerName];
+                  if (preset && preset.keySettings) {
+                      keySettings = { ...preset.keySettings };
+                  }
+              }
+          } catch (e) {
+              console.error('Failed to load key preset:', e);
+          }
+      }
+
       function saveSwipePreset() {
           const playerName = document.getElementById('playerNameInput').value.trim();
           if (!playerName) {
@@ -969,12 +1188,26 @@
               return;
           }
           try {
+              // LocalStorageに保存
               const presets = JSON.parse(localStorage.getItem(PRESETS_STORAGE_KEY) || '{}');
               presets[playerName] = { 
                 swipeThreshold: swipeSettings.threshold,
                 swipeBoundaries: swipeSettings.boundaries
               };
               localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(presets));
+              
+              // サーバーにも保存（接続済みの場合）
+              if (ws && ws.readyState === WebSocket.OPEN) {
+                  ws.send(JSON.stringify({
+                      type: 'save_preset',
+                      playerName: playerName,
+                      swipeSettings: {
+                          threshold: swipeSettings.threshold,
+                          boundaries: swipeSettings.boundaries
+                      }
+                  }));
+              }
+              
               showNotification(`'${playerName}' のプリセットを保存しました`, 3000);
           } catch (e) {
               console.error('Failed to save preset:', e);
@@ -984,6 +1217,15 @@
 
       function loadSwipePreset(playerName) {
           if (!playerName) return;
+          
+          // サーバーからプリセットを読み込むリクエストを送信
+          if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({
+                  type: 'load_preset',
+                  playerName: playerName
+              }));
+          }
+          
           try {
               const presets = JSON.parse(localStorage.getItem(PRESETS_STORAGE_KEY) || '{}');
               const preset = presets[playerName];
@@ -1080,42 +1322,45 @@
                   showWaitingRoom(data.roomCode);
                   
                     // ホスト権限UI更新
-                    const updateSettings = () => {
-                        if (ws && ws.readyState === WebSocket.OPEN) {
-                             ws.send(JSON.stringify({
-                                 type: 'update_settings',
-                                     settings: { 
-                                         garbageRate: parseFloat(document.getElementById('garbageRate').value),
-                                         dropSpeed: parseInt(document.getElementById('dropSpeed').value),
-                                         defeatTime: parseInt(document.getElementById('defeatTime').value),
-                                         garbageDelay: parseInt(document.getElementById('garbageDelay').value),
-                                         skillEnabled: document.getElementById('skillEnabled').checked,
-                                         skillRequiredCount: parseInt(document.getElementById('skillRequiredCount').value),
-                                         animationMode: document.getElementById('animationMode').value,
-                                         garbageMode: document.getElementById('garbageMode').value
-                                     }
-                             }));
-                        }
-                    };
+                     const updateSettings = () => {
+                         if (ws && ws.readyState === WebSocket.OPEN) {
+                              ws.send(JSON.stringify({
+                                  type: 'update_settings',
+                                      settings: { 
+                                          garbageRate: parseFloat(document.getElementById('garbageRate').value),
+                                          dropSpeed: parseInt(document.getElementById('dropSpeed').value),
+                                          defeatTime: parseInt(document.getElementById('defeatTime').value),
+                                          garbageDelay: parseInt(document.getElementById('garbageDelay').value),
+                                          skillEnabled: document.getElementById('skillEnabled').checked,
+                                          skillRequiredCount: parseInt(document.getElementById('skillRequiredCount').value),
+                                          animationMode: document.getElementById('animationMode').value,
+                                          garbageMode: document.getElementById('garbageMode').value,
+                                          holdEnabled: document.getElementById('holdEnabled').checked
+                                      }
+                              }));
+                         }
+                     };
 
-                    document.getElementById('garbageRate').disabled = false;
-                    document.getElementById('dropSpeed').disabled = false;
-                    document.getElementById('defeatTime').disabled = false;
-                    document.getElementById('garbageDelay').disabled = false;
-                     document.getElementById('skillEnabled').disabled = false;
-                     document.getElementById('skillRequiredCount').disabled = false;
-                     document.getElementById('animationMode').disabled = false;
-                     document.getElementById('garbageMode').disabled = false;
-                    
-                    document.getElementById('garbageRate').onchange = updateSettings;
-                    document.getElementById('dropSpeed').onchange = updateSettings;
-                    document.getElementById('defeatTime').onchange = updateSettings;
-                     document.getElementById('garbageDelay').onchange = updateSettings;
-                     document.getElementById('skillEnabled').onchange = updateSettings;
-                     document.getElementById('skillRequiredCount').onchange = updateSettings;
-                     document.getElementById('animationMode').onchange = updateSettings;
-                     document.getElementById('garbageMode').onchange = updateSettings;
-                    // document.getElementById('garbagePrediction').onchange = updateSettings;
+                     document.getElementById('garbageRate').disabled = false;
+                     document.getElementById('dropSpeed').disabled = false;
+                     document.getElementById('defeatTime').disabled = false;
+                     document.getElementById('garbageDelay').disabled = false;
+                      document.getElementById('skillEnabled').disabled = false;
+                      document.getElementById('skillRequiredCount').disabled = false;
+                      document.getElementById('animationMode').disabled = false;
+                      document.getElementById('garbageMode').disabled = false;
+                      document.getElementById('holdEnabled').disabled = false;
+                     
+                     document.getElementById('garbageRate').onchange = updateSettings;
+                     document.getElementById('dropSpeed').onchange = updateSettings;
+                     document.getElementById('defeatTime').onchange = updateSettings;
+                      document.getElementById('garbageDelay').onchange = updateSettings;
+                      document.getElementById('skillEnabled').onchange = updateSettings;
+                      document.getElementById('skillRequiredCount').onchange = updateSettings;
+                      document.getElementById('animationMode').onchange = updateSettings;
+                      document.getElementById('garbageMode').onchange = updateSettings;
+                      document.getElementById('holdEnabled').onchange = updateSettings;
+                     // document.getElementById('garbagePrediction').onchange = updateSettings;
                    break;
 
               case 'room_joined':
@@ -1123,102 +1368,137 @@
                   myPlayerId = data.playerId;
                   isHost = false;
                   showWaitingRoom(data.roomCode);
+                  // ホストじゃないので設定を無効化
+                  disableSettingsInputs();
                   break;
 
               case 'you_are_host':
                   isHost = true;
+                  enableSettingsInputs();
                   break;
 
-              case 'room_state':
-                  allPlayers = data.players;
-                  updatePlayerList(data.players, data.hostId);
+               case 'room_state':
+                   allPlayers = data.players;
+                   updatePlayerList(data.players, data.hostId);
 
-                  // 全員準備完了チェック
-                  const allReady = data.players.every(p => p.ready);
-                  if (allReady && data.players.length >= 2) {
-                      document.getElementById('status').textContent = 'まもなく開始...';
-                  } else if (data.players.length < 2) {
-                      document.getElementById('status').textContent = 'プレイヤーを待っています... (最低2人必要)';
-                  } else {
-                      document.getElementById('status').textContent = `${data.players.filter(p => p.ready).length}/${data.players.length} 人準備完了`;
-                  }
-                  
-                    // 設定反映
-                    if (data.settings) {
-                        const garbageInput = document.getElementById('garbageRate');
-                        const dropInput = document.getElementById('dropSpeed');
-                        const defeatInput = document.getElementById('defeatTime');
-                         const delayInput = document.getElementById('garbageDelay');
-                         const skillEnabledInput = document.getElementById('skillEnabled');
-                         const skillRequiredInput = document.getElementById('skillRequiredCount');
-                         const animationModeInput = document.getElementById('animationMode');
-                         const garbageModeInput = document.getElementById('garbageMode');
-                         
-                        if (document.activeElement !== garbageInput) garbageInput.value = data.settings.garbageRate;
-                        if (document.activeElement !== dropInput) dropInput.value = data.settings.dropSpeed || 500;
-                        if (document.activeElement !== defeatInput) defeatInput.value = data.settings.defeatTime || 10;
-                        if (document.activeElement !== delayInput) delayInput.value = data.settings.garbageDelay !== undefined ? data.settings.garbageDelay : 3;
-                        if (document.activeElement !== skillEnabledInput) skillEnabledInput.checked = data.settings.skillEnabled !== undefined ? data.settings.skillEnabled : true;
-                        if (document.activeElement !== skillRequiredInput) skillRequiredInput.value = data.settings.skillRequiredCount || 20;
-                        if (document.activeElement !== animationModeInput) animationModeInput.value = data.settings.animationMode || 'normal';
-                        if (document.activeElement !== garbageModeInput) garbageModeInput.value = data.settings.garbageMode || 'drop';
-                        
-                        // ホスト以外は無効化
-                        const isMyHost = (data.hostId === myPlayerId);
-                        garbageInput.disabled = !isMyHost;
-                        dropInput.disabled = !isMyHost;
-                        defeatInput.disabled = !isMyHost;
-                        delayInput.disabled = !isMyHost;
-                        skillEnabledInput.disabled = !isMyHost;
-                        skillRequiredInput.disabled = !isMyHost;
-                        animationModeInput.disabled = !isMyHost;
-                        garbageModeInput.disabled = !isMyHost;
-                       // garbagePrediction disabled logic removed
+                   // 全員準備完了チェック
+                   const allReady = data.players.every(p => p.ready);
+                   if (allReady && data.players.length >= 2) {
+                       document.getElementById('status').textContent = 'まもなく開始...';
+                   } else if (data.players.length < 2) {
+                       document.getElementById('status').textContent = 'プレイヤーを待っています... (最低2人必要)';
+                   } else {
+                       document.getElementById('status').textContent = `${data.players.filter(p => p.ready).length}/${data.players.length} 人準備完了`;
+                   }
+                   break;
 
-                       // Discordボタンの表示切替
-                       const discordBtn = document.getElementById('copyDiscordCmdBtn');
-                       if (discordBtn) {
-                           discordBtn.style.display = isMyHost ? 'inline-block' : 'none';
+               case 'preset_loaded':
+                   // サーバーからプリセットを読み込んだ
+                   if (data.success && data.preset) {
+                       const preset = data.preset;
+                       // LocalStorageにも保存しておく
+                       const presets = JSON.parse(localStorage.getItem(PRESETS_STORAGE_KEY) || '{}');
+                       if (!presets[data.playerName]) presets[data.playerName] = {};
+                       
+                       if (preset.swipeSettings) {
+                           presets[data.playerName].swipeThreshold = preset.swipeSettings.threshold;
+                           presets[data.playerName].swipeBoundaries = preset.swipeSettings.boundaries;
+                           // 現在の設定に適用
+                           swipeSettings.threshold = preset.swipeSettings.threshold;
+                           swipeSettings.boundaries = preset.swipeSettings.boundaries;
                        }
                        
-                        // ホスト権限更新
-                        if (isMyHost) {
-                             const updateSettings = () => {
-                                 if (ws && ws.readyState === WebSocket.OPEN) {
-                                     ws.send(JSON.stringify({
-                                         type: 'update_settings',
-                                         settings: { 
-                                             garbageRate: parseFloat(garbageInput.value),
-                                             dropSpeed: parseInt(dropInput.value),
-                                             defeatTime: parseInt(defeatInput.value),
-                                             garbageDelay: parseInt(delayInput.value),
-                                             skillEnabled: skillEnabledInput.checked,
-                                             skillRequiredCount: parseInt(skillRequiredInput.value),
-                                             animationMode: animationModeInput.value,
-                                             garbageMode: garbageModeInput.value
-                                         }
-                                     }));
-                                 }
-                             };
-                              garbageInput.onchange = updateSettings;
-                              dropInput.onchange = updateSettings;
-                              defeatInput.onchange = updateSettings;
-                              delayInput.onchange = updateSettings;
-                              skillEnabledInput.onchange = updateSettings;
-                              skillRequiredInput.onchange = updateSettings;
-                              animationModeInput.onchange = updateSettings;
-                              garbageModeInput.onchange = updateSettings;
-                          } else {
-                              garbageInput.onchange = null;
-                              dropInput.onchange = null;
-                              defeatInput.onchange = null;
-                             delayInput.onchange = null;
-                             skillEnabledInput.onchange = null;
-                             skillRequiredInput.onchange = null;
-                             animationModeInput.onchange = null;
-                             garbageModeInput.onchange = null;
-                        }
+                       if (preset.keySettings) {
+                           presets[data.playerName].keySettings = preset.keySettings;
+                           // 現在の設定に適用
+                           keySettings = { ...preset.keySettings };
+                       }
+                       
+                       localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(presets));
                    }
+                  
+                    // 設定反映
+                     if (data.settings) {
+                         const garbageInput = document.getElementById('garbageRate');
+                         const dropInput = document.getElementById('dropSpeed');
+                         const defeatInput = document.getElementById('defeatTime');
+                          const delayInput = document.getElementById('garbageDelay');
+                          const skillEnabledInput = document.getElementById('skillEnabled');
+                          const skillRequiredInput = document.getElementById('skillRequiredCount');
+                          const animationModeInput = document.getElementById('animationMode');
+                          const garbageModeInput = document.getElementById('garbageMode');
+                          const holdEnabledInput = document.getElementById('holdEnabled');
+                          
+                         if (document.activeElement !== garbageInput) garbageInput.value = data.settings.garbageRate;
+                         if (document.activeElement !== dropInput) dropInput.value = data.settings.dropSpeed || 500;
+                         if (document.activeElement !== defeatInput) defeatInput.value = data.settings.defeatTime || 10;
+                         if (document.activeElement !== delayInput) delayInput.value = data.settings.garbageDelay !== undefined ? data.settings.garbageDelay : 3;
+                         if (document.activeElement !== skillEnabledInput) skillEnabledInput.checked = data.settings.skillEnabled !== undefined ? data.settings.skillEnabled : true;
+                         if (document.activeElement !== skillRequiredInput) skillRequiredInput.value = data.settings.skillRequiredCount || 20;
+                         if (document.activeElement !== animationModeInput) animationModeInput.value = data.settings.animationMode || 'normal';
+                         if (document.activeElement !== garbageModeInput) garbageModeInput.value = data.settings.garbageMode || 'drop';
+                         if (document.activeElement !== holdEnabledInput) holdEnabledInput.checked = data.settings.holdEnabled !== undefined ? data.settings.holdEnabled : true;
+                         
+                         // ホスト以外は無効化
+                         const isMyHost = (data.hostId === myPlayerId);
+                         garbageInput.disabled = !isMyHost;
+                         dropInput.disabled = !isMyHost;
+                         defeatInput.disabled = !isMyHost;
+                         delayInput.disabled = !isMyHost;
+                         skillEnabledInput.disabled = !isMyHost;
+                         skillRequiredInput.disabled = !isMyHost;
+                         animationModeInput.disabled = !isMyHost;
+                         garbageModeInput.disabled = !isMyHost;
+                         holdEnabledInput.disabled = !isMyHost;
+                        // garbagePrediction disabled logic removed
+
+                        // Discordボタンの表示切替
+                        const discordBtn = document.getElementById('copyDiscordCmdBtn');
+                        if (discordBtn) {
+                            discordBtn.style.display = isMyHost ? 'inline-block' : 'none';
+                        }
+                        
+                         // ホスト権限更新
+                         if (isMyHost) {
+                              const updateSettings = () => {
+                                  if (ws && ws.readyState === WebSocket.OPEN) {
+                                      ws.send(JSON.stringify({
+                                          type: 'update_settings',
+                                          settings: { 
+                                              garbageRate: parseFloat(garbageInput.value),
+                                              dropSpeed: parseInt(dropInput.value),
+                                              defeatTime: parseInt(defeatInput.value),
+                                              garbageDelay: parseInt(delayInput.value),
+                                              skillEnabled: skillEnabledInput.checked,
+                                              skillRequiredCount: parseInt(skillRequiredInput.value),
+                                              animationMode: animationModeInput.value,
+                                              garbageMode: garbageModeInput.value,
+                                              holdEnabled: holdEnabledInput.checked
+                                          }
+                                      }));
+                                  }
+                              };
+                               garbageInput.onchange = updateSettings;
+                               dropInput.onchange = updateSettings;
+                               defeatInput.onchange = updateSettings;
+                               delayInput.onchange = updateSettings;
+                               skillEnabledInput.onchange = updateSettings;
+                               skillRequiredInput.onchange = updateSettings;
+                               animationModeInput.onchange = updateSettings;
+                               garbageModeInput.onchange = updateSettings;
+                               holdEnabledInput.onchange = updateSettings;
+                           } else {
+                               garbageInput.onchange = null;
+                               dropInput.onchange = null;
+                               defeatInput.onchange = null;
+                              delayInput.onchange = null;
+                              skillEnabledInput.onchange = null;
+                              skillRequiredInput.onchange = null;
+                              animationModeInput.onchange = null;
+                              garbageModeInput.onchange = null;
+                              holdEnabledInput.onchange = null;
+                         }
+                    }
                   break;
 
                case 'game_start':
@@ -1342,32 +1622,59 @@
                   break;
                   
                case 'force_return_lobby':
-                   // ホストがNEXTを押したので全員ロビーへ
-                   if (game && game.scene.scenes[0]) {
-                       const scene = game.scene.scenes[0];
-                       scene.resetGame();
-                       scene.gameStarted = false;
-                       scene.gameOver = false;
-                   }
-                   returnToLobby();
-                   break;
+                    // ホストがNEXTを押したので全員ロビーへ
+                    if (game && game.scene.scenes[0]) {
+                        const scene = game.scene.scenes[0];
+                        scene.resetGame();
+                        scene.gameStarted = false;
+                        scene.gameOver = false;
+                    }
+                    returnToLobby();
+                    break;
 
-               case 'ping':
+               case 'kicked':
+                    alert(data.message || 'ホストによってキックされました');
+                    location.reload();
+                    break;
+
+                case 'ping':
                    if (ws && ws.readyState === WebSocket.OPEN) {
                        ws.send(JSON.stringify({ type: 'pong' }));
                    }
                    break;
 
-                case 'skill_activated':
-                    if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
-                        game.scene.scenes[0].applySkillTransparentPuyos(
-                            data.fromPlayerId,
-                            data.fromPlayerName
-                        );
-                    }
-                    break;
-           }
-       }
+                 case 'skill_activated':
+                     if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
+                         game.scene.scenes[0].applySkillTransparentPuyos(
+                             data.fromPlayerId,
+                             data.fromPlayerName
+                         );
+                     }
+                     break;
+
+               case 'force_game_end':
+                   // ホストによる強制終了
+                   if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
+                       const scene = game.scene.scenes[0];
+                       if (!scene.gameOver) {
+                           scene.gameOver = true;
+                           if (scene.dropTimer) {
+                               scene.dropTimer.remove();
+                           }
+                           showNotification(data.message || 'ホストによってゲームが終了されました', 5000);
+                           
+                           // 3秒後にロビーに戻る
+                           setTimeout(() => {
+                               scene.resetGame();
+                               scene.gameStarted = false;
+                               scene.gameOver = false;
+                               returnToLobby();
+                           }, 3000);
+                       }
+                   }
+                   break;
+            }
+        }
 
       function onSocketClose() {
            const statusDiv = document.getElementById('status');
@@ -1425,7 +1732,9 @@
           const playerNameInput = document.getElementById('playerNameInput');
           if (playerNameInput) {
               playerNameInput.addEventListener('change', () => {
-                  loadSwipePreset(playerNameInput.value.trim());
+                  const name = playerNameInput.value.trim();
+                  loadSwipePreset(name);
+                  loadKeySettings();
               });
           }
 
@@ -1482,6 +1791,21 @@
           }
       }
 
+      function kickPlayer(targetId) {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ 
+                  type: 'kick_player',
+                  targetId: targetId
+              }));
+          }
+      }
+
+      function forceStartGame() {
+          if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'force_start' }));
+          }
+      }
+
       function leaveRoom() {
           if (ws && ws.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({ type: 'leave_room' }));
@@ -1511,6 +1835,14 @@
           const list = document.getElementById('playerList');
           list.innerHTML = '<h3>プレイヤー一覧</h3>';
 
+          const isMyHost = (hostId === myPlayerId);
+          
+          // ホストの場合は強制開始ボタンを表示
+          const forceStartBtn = document.getElementById('forceStartBtn');
+          if (forceStartBtn) {
+              forceStartBtn.style.display = isMyHost ? 'inline-block' : 'none';
+          }
+
           players.forEach(player => {
               const item = document.createElement('div');
               item.className = 'player-item';
@@ -1528,6 +1860,16 @@
 
               item.appendChild(name);
               item.appendChild(status);
+              
+              // ホストのみが他のプレイヤーをキックできる
+              if (isMyHost && player.id !== myPlayerId) {
+                  const kickBtn = document.createElement('button');
+                  kickBtn.textContent = 'キック';
+                  kickBtn.style.cssText = 'margin-left: 10px; padding: 2px 8px; font-size: 11px; background: #e74c3c; color: white; border: none; border-radius: 3px; cursor: pointer;';
+                  kickBtn.onclick = () => kickPlayer(player.id);
+                  item.appendChild(kickBtn);
+              }
+              
               list.appendChild(item);
           });
       }
@@ -1624,18 +1966,8 @@
                    }
                ).setOrigin(0.5);
 
-               // キーボード設定
-               this.cursors = this.input.keyboard.createCursorKeys();
-               this.wasd = this.input.keyboard.addKeys({ up: 'W', left: 'A', down: 'S', right: 'D' });
-               this.spaceKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-               
-               // キーボードイベントのキャプチャ設定
-               this.input.keyboard.on('keydown', (event) => {
-                   // チャット入力中はゲーム操作を無効化
-                   if (this.chatInputFocused) {
-                       event.stopPropagation();
-                   }
-               });
+                 // キーボード設定（カスタムキー設定を適用）
+                 this.setupCustomKeyBindings();
 
                 // タッチ・スワイプ設定
                 this.setupTouchControls();
@@ -1671,6 +2003,7 @@
                 this.animationMode = this.gameSettings.animationMode || 'normal';
                 this.garbageMode = this.gameSettings.garbageMode || 'drop';
                 this.garbageAppear = this.gameSettings.garbageAppear || 'drop';
+                this.holdEnabled = this.gameSettings.holdEnabled !== undefined ? this.gameSettings.holdEnabled : true;
               this.zoomedPlayerId = null;
 
               // シード付き乱数初期化 (全員同じシード)
@@ -1694,6 +2027,7 @@
                this.chainCount = 0;
                this.pendingGarbageCount = 0;
                this.garbageQueue = [];
+               this.chatInputFocused = false; // チャット入力状態をリセット
                if (this.defeatTimer) {
                    this.defeatTimer.remove();
                    this.defeatTimer = null;
@@ -1825,11 +2159,23 @@
                 }).setOrigin(0.5).setDepth(100);
                 this.nextContainer = this.add.container(nextX, nextY).setDepth(100);
                
-               // Nextキューの初期化 (2つ分表示するため、あらかじめ生成)
-               this.nextQueue = [this.createPuyoPair(), this.createPuyoPair()];
-               this.updateNextDisplay();
+                // Nextキューの初期化 (2つ分表示するため、あらかじめ生成)
+                this.nextQueue = [this.createPuyoPair(), this.createPuyoPair()];
+                this.updateNextDisplay();
 
-              // カウントダウン開始
+                // ホールド用の変数を初期化
+                this.holdPair = null;
+                this.canHold = true;
+                if (this.holdEnabled) {
+                    this.createHoldDisplay();
+                }
+
+                // ホスト用の強制終了ボタン
+                if (isHost) {
+                    this.createForceEndButton();
+                }
+
+               // カウントダウン開始
               this.startCountdown(() => {
                   // ゲーム開始
                   this.spawnNewPair();
@@ -1894,6 +2240,12 @@
            }
 
           createField(x, label) {
+              // 既存のボーダーラインgraphicsを削除
+              const existingGraphics = this.children.list.filter(child => 
+                  child.type === 'Graphics' && child.getData && child.getData('borderLine')
+              );
+              existingGraphics.forEach(g => g.destroy());
+              
               // 背景
               const bg = this.add.rectangle(
                   x + COLS * CELL_SIZE / 2,
@@ -1925,6 +2277,7 @@
               const graphics = this.add.graphics();
               graphics.lineStyle(3, 0xff0000, 0.8);
               graphics.setDepth(100);
+              graphics.setData('borderLine', true);
 
               for (let i = 0; i < COLS * CELL_SIZE; i += 10) {
                   if (Math.floor(i / 10) % 2 === 0) {
@@ -2169,12 +2522,220 @@
                            }
                        ).setOrigin(0.5).setDepth(52);
      
-                       this.opponentFields.set(player.id, field);
-                  });
-              }
-          }
+                        this.opponentFields.set(player.id, field);
+                   });
+               }
+           }
 
-          updateOpponentField(playerId, gridData, garbageCount = 0) {
+           // ホスト用の強制終了ボタンを作成
+           createForceEndButton() {
+               const buttonX = 900;
+               const buttonY = 10;
+               const buttonWidth = 80;
+               const buttonHeight = 30;
+               
+               // ボタンの背景
+               const buttonBg = this.add.rectangle(
+                   buttonX + buttonWidth / 2,
+                   buttonY + buttonHeight / 2,
+                   buttonWidth,
+                   buttonHeight,
+                   0xe74c3c
+               ).setOrigin(0.5).setDepth(1000);
+               
+               // ボタンのテキスト
+               const buttonText = this.add.text(
+                   buttonX + buttonWidth / 2,
+                   buttonY + buttonHeight / 2,
+                   '強制終了',
+                   {
+                       fontSize: '12px',
+                       fontFamily: '"JetBrains Mono"',
+                       fill: '#ffffff',
+                       fontStyle: 'bold'
+                   }
+               ).setOrigin(0.5).setDepth(1001);
+               
+               // インタラクティブ設定
+               buttonBg.setInteractive();
+               
+               // ホバー効果
+               buttonBg.on('pointerover', () => {
+                   buttonBg.setFillStyle(0xc0392b);
+               });
+               
+               buttonBg.on('pointerout', () => {
+                   buttonBg.setFillStyle(0xe74c3c);
+               });
+               
+               // クリック処理
+               buttonBg.on('pointerdown', () => {
+                   if (confirm('本当にゲームを強制終了しますか？全員がゲームオーバーになります。')) {
+                       // サーバーに強制終了を通知
+                       if (ws && ws.readyState === WebSocket.OPEN) {
+                           ws.send(JSON.stringify({ type: 'force_end_game' }));
+                       }
+                   }
+               });
+               
+                this.forceEndButton = { bg: buttonBg, text: buttonText };
+            }
+
+            // ホールド表示を作成
+            createHoldDisplay() {
+                const holdX = this.fieldOffsetX - 70;
+                const holdY = 80;
+                
+                this.add.text(holdX, holdY - 30, 'HOLD', {
+                    fontSize: '18px',
+                    fontFamily: '"JetBrains Mono"',
+                    fill: '#333',
+                    fontStyle: 'bold'
+                }).setOrigin(0.5).setDepth(100);
+                
+                this.holdContainer = this.add.container(holdX, holdY).setDepth(100);
+                this.updateHoldDisplay();
+                
+                // モバイル用ホールドボタンを作成
+                this.createHoldButton();
+            }
+            
+            // モバイル用ホールドボタンを作成
+            createHoldButton() {
+                const buttonX = this.fieldOffsetX + COLS * CELL_SIZE + 60;
+                const buttonY = ROWS * CELL_SIZE - 50;
+                const buttonWidth = 70;
+                const buttonHeight = 40;
+                
+                // ボタンの背景
+                const buttonBg = this.add.rectangle(
+                    buttonX,
+                    buttonY,
+                    buttonWidth,
+                    buttonHeight,
+                    0x3498db
+                ).setOrigin(0.5).setDepth(100).setInteractive();
+                
+                // ボタンのテキスト
+                const buttonText = this.add.text(
+                    buttonX,
+                    buttonY,
+                    'HOLD',
+                    {
+                        fontSize: '14px',
+                        fontFamily: '"JetBrains Mono"',
+                        fill: '#ffffff',
+                        fontStyle: 'bold'
+                    }
+                ).setOrigin(0.5).setDepth(101);
+                
+                // ホバー効果
+                buttonBg.on('pointerover', () => {
+                    buttonBg.setFillStyle(0x2980b9);
+                });
+                
+                buttonBg.on('pointerout', () => {
+                    buttonBg.setFillStyle(0x3498db);
+                });
+                
+                // クリック処理
+                buttonBg.on('pointerdown', () => {
+                    if (this.holdEnabled && this.canHold && this.currentPair) {
+                        this.hold();
+                    }
+                });
+            }
+
+            // ホールド表示を更新
+            updateHoldDisplay() {
+                this.holdContainer.removeAll(true);
+                
+                if (this.holdPair) {
+                    const mainColor = this.holdPair.main.color;
+                    const subColor = this.holdPair.sub.color;
+                    
+                    const mainPuyo = this.add.circle(0, -CELL_SIZE * 0.4, CELL_SIZE * 0.3, COLOR_VALUES[mainColor]);
+                    const subPuyo = this.add.circle(0, CELL_SIZE * 0.4, CELL_SIZE * 0.3, COLOR_VALUES[subColor]);
+                    
+                    mainPuyo.setStrokeStyle(2, 0xffffff);
+                    subPuyo.setStrokeStyle(2, 0xffffff);
+                    
+                    this.holdContainer.add([mainPuyo, subPuyo]);
+                }
+            }
+
+            // ホールド機能を実行
+            hold() {
+                if (!this.holdEnabled || !this.canHold || !this.currentPair) return;
+                
+                // 現在のぷよを一時保存
+                const currentMainColor = this.currentPair.main.color;
+                const currentSubColor = this.currentPair.sub.color;
+                
+                // 現在のぷよのスプライトを削除
+                if (this.currentPair.main.sprite) this.currentPair.main.sprite.destroy();
+                if (this.currentPair.sub.sprite) this.currentPair.sub.sprite.destroy();
+                if (this.currentPair.ghostMain) this.currentPair.ghostMain.destroy();
+                if (this.currentPair.ghostSub) this.currentPair.ghostSub.destroy();
+                
+                if (this.holdPair) {
+                    // ホールドと交換
+                    const holdMainColor = this.holdPair.main.color;
+                    const holdSubColor = this.holdPair.sub.color;
+                    
+                    this.holdPair = {
+                        main: { color: currentMainColor },
+                        sub: { color: currentSubColor }
+                    };
+                    
+                    this.currentPair = {
+                        main: { color: holdMainColor, sprite: null },
+                        sub: { color: holdSubColor, sprite: null },
+                        col: 2,
+                        row: 1,
+                        rotation: 0,
+                        ghostMain: null,
+                        ghostSub: null
+                    };
+                } else {
+                    // ホールドに保存して新しいぷよを生成
+                    this.holdPair = {
+                        main: { color: currentMainColor },
+                        sub: { color: currentSubColor }
+                    };
+                    
+                    // 次のぷよを取得
+                    const nextPairData = this.nextQueue.shift();
+                    this.nextQueue.push(this.createPuyoPair());
+                    this.updateNextDisplay();
+                    
+                    this.currentPair = {
+                        main: { color: nextPairData.main.color, sprite: null },
+                        sub: { color: nextPairData.sub.color, sprite: null },
+                        col: 2,
+                        row: 1,
+                        rotation: 0,
+                        ghostMain: null,
+                        ghostSub: null
+                    };
+                }
+                
+                // 新しいぷよを表示
+                const startX = this.fieldOffsetX + this.currentPair.col * CELL_SIZE + CELL_SIZE / 2;
+                const startY = this.currentPair.row * CELL_SIZE + CELL_SIZE / 2;
+                
+                this.currentPair.main.sprite = this.createPuyo(startX, startY, this.currentPair.main.color);
+                this.currentPair.sub.sprite = this.createPuyo(startX, startY - CELL_SIZE, this.currentPair.sub.color);
+                
+                this.updateGhostPieces();
+                this.updateHoldDisplay();
+                this.sendPieceUpdate();
+                
+                // 1回のみホールド可能
+                this.canHold = false;
+            }
+ 
+            updateOpponentField(playerId, gridData, garbageCount = 0) {
               const field = this.opponentFields.get(playerId);
               if (!field) return;
 
@@ -2360,6 +2921,7 @@
  
                 this.input.on('pointerdown', (pointer) => {
                     if (this.gameOver || !this.gameStarted) return;
+                    
                     // マルチタッチ対策: 最初のタッチのみ追跡
                     if (this.activeTouchId !== null) return;
                     this.activeTouchId = pointer.id;
@@ -2477,8 +3039,74 @@
                     lastTouchEnd = now;
                 }, false);
             }
+
+            // カスタムキー設定を適用
+            setupCustomKeyBindings() {
+                // キー設定を読み込み
+                loadKeySettings();
+                
+                // デフォルトのカーソルキーを設定
+                this.cursors = this.input.keyboard.createCursorKeys();
+                
+                // カスタムキー設定を適用
+                // PhaserのKeyCodesマッピング
+                const KEY_MAP = {
+                    'ArrowLeft': Phaser.Input.Keyboard.KeyCodes.LEFT,
+                    'ArrowRight': Phaser.Input.Keyboard.KeyCodes.RIGHT,
+                    'ArrowUp': Phaser.Input.Keyboard.KeyCodes.UP,
+                    'ArrowDown': Phaser.Input.Keyboard.KeyCodes.DOWN,
+                    'Space': Phaser.Input.Keyboard.KeyCodes.SPACE,
+                    'KeyZ': Phaser.Input.Keyboard.KeyCodes.Z,
+                    'KeyX': Phaser.Input.Keyboard.KeyCodes.X,
+                    'ShiftLeft': Phaser.Input.Keyboard.KeyCodes.SHIFT,
+                    'ShiftRight': Phaser.Input.Keyboard.KeyCodes.SHIFT,
+                    'ControlLeft': Phaser.Input.Keyboard.KeyCodes.CTRL,
+                    'ControlRight': Phaser.Input.Keyboard.KeyCodes.CTRL,
+                    'AltLeft': Phaser.Input.Keyboard.KeyCodes.ALT,
+                    'AltRight': Phaser.Input.Keyboard.KeyCodes.ALT,
+                    'KeyC': Phaser.Input.Keyboard.KeyCodes.C
+                };
+                
+                const getKeyCode = (keyName) => {
+                    if (!keyName) return null;
+                    // マッピングがある場合はそれを使用
+                    if (KEY_MAP[keyName]) {
+                        return KEY_MAP[keyName];
+                    }
+                    // それ以外は文字列のまま（Phaserが解釈）
+                    return keyName;
+                };
+                
+                // 配列からキーを設定（全てのキーを設定）
+                const setupKeyFromArray = (setting, keyProperty) => {
+                    const keys = keySettings[setting];
+                    this[keyProperty] = [];
+                    if (Array.isArray(keys)) {
+                        for (const key of keys) {
+                            const code = getKeyCode(key);
+                            if (code) {
+                                this[keyProperty].push(this.input.keyboard.addKey(code));
+                            }
+                        }
+                    } else if (keys) {
+                        // 後方互換性
+                        const code = getKeyCode(keys);
+                        if (code) {
+                            this[keyProperty].push(this.input.keyboard.addKey(code));
+                        }
+                    }
+                };
+                
+                setupKeyFromArray('left', 'keyLeft');
+                setupKeyFromArray('right', 'keyRight');
+                setupKeyFromArray('down', 'keyDown');
+                setupKeyFromArray('rotate', 'keyRotate');
+                setupKeyFromArray('rotateCCW', 'keyRotateCCW');
+                setupKeyFromArray('hold', 'keyHold');
+                setupKeyFromArray('hardDrop', 'keyHardDrop');
+            }
            
-           // 端に移動（素早くスワイプ時）
+            // 端に移動（素早くスワイプ時）
            moveToEdge(direction) {
                if (!this.currentPair) return;
                
@@ -2572,6 +3200,9 @@
                    return;
                }
   
+               // ホールド可能フラグをリセット
+               this.canHold = true;
+
                // キューから取得し、補充する (常に2つ先まで保持)
                const nextPairData = this.nextQueue.shift();
               this.nextQueue.push(this.createPuyoPair());
@@ -2686,22 +3317,43 @@
                // キー長押しによる高速移動処理
                const moveDelay = this.calculateMoveDelay(time);
                
-               if ((this.cursors.left.isDown || this.wasd.left.isDown) && time > this.lastMoveTime + moveDelay) {
-                   this.movePair(-1);
-                   this.lastMoveTime = time;
-               } else if ((this.cursors.right.isDown || this.wasd.right.isDown) && time > this.lastMoveTime + moveDelay) {
-                   this.movePair(1);
-                   this.lastMoveTime = time;
-               }
+                 // カスタムキーまたはデフォルトキーで判定（配列対応）
+                 const leftPressed = (this.keyLeft && this.keyLeft.some(k => k.isDown)) || this.cursors.left.isDown;
+                 const rightPressed = (this.keyRight && this.keyRight.some(k => k.isDown)) || this.cursors.right.isDown;
+                 const downPressed = (this.keyDown && this.keyDown.some(k => k.isDown)) || this.cursors.down.isDown;
+                 const rotatePressed = (this.keyRotate && this.keyRotate.some(k => Phaser.Input.Keyboard.JustDown(k))) || 
+                                       Phaser.Input.Keyboard.JustDown(this.cursors.up);
+                 const hardDropPressed = this.keyHardDrop && this.keyHardDrop.some(k => Phaser.Input.Keyboard.JustDown(k));
+                
+                if (leftPressed && time > this.lastMoveTime + moveDelay) {
+                    this.movePair(-1);
+                    this.lastMoveTime = time;
+                } else if (rightPressed && time > this.lastMoveTime + moveDelay) {
+                    this.movePair(1);
+                    this.lastMoveTime = time;
+                }
 
-               if ((Phaser.Input.Keyboard.JustDown(this.cursors.up) || Phaser.Input.Keyboard.JustDown(this.wasd.up)) && time > this.lastRotateTime + 50) {
-                   this.rotatePair();
-                   this.lastRotateTime = time;
-               }
+                 if (rotatePressed && time > this.lastRotateTime + 50) {
+                     this.rotatePair();
+                     this.lastRotateTime = time;
+                 }
 
-               if (Phaser.Input.Keyboard.JustDown(this.spaceKey) || Phaser.Input.Keyboard.JustDown(this.cursors.down) || Phaser.Input.Keyboard.JustDown(this.wasd.down)) {
-                   this.hardDrop();
-               }
+                 // 逆回転
+                 const rotateCCWPressed = this.keyRotateCCW && this.keyRotateCCW.some(k => Phaser.Input.Keyboard.JustDown(k));
+                 if (rotateCCWPressed && time > this.lastRotateTime + 50) {
+                     this.rotatePair(-1);
+                     this.lastRotateTime = time;
+                 }
+
+                 // ホールド
+                 const holdPressed = this.keyHold && this.keyHold.some(k => Phaser.Input.Keyboard.JustDown(k));
+                 if (holdPressed && this.holdEnabled) {
+                     this.hold();
+                 }
+ 
+                 if (hardDropPressed) {
+                     this.hardDrop();
+                 }
 
                 // 敗北タイマー更新
                 if (this.defeatTimer) {
@@ -2720,21 +3372,22 @@
                  this.checkTransparentPuyoReveal();
              }
            
-           // キー長押し時間に応じた移動遅延を計算
-           calculateMoveDelay(currentTime) {
-               const baseDelay = 150;
-               const fastDelay = 50;
-               const holdThreshold = 300; // 300ms以上長押しで高速化
-               
-               const leftHeld = this.cursors.left.isDown || this.wasd.left.isDown;
-               const rightHeld = this.cursors.right.isDown || this.wasd.right.isDown;
-               
-               if (!leftHeld && !rightHeld) {
-                   this.keyHoldStartTime = {};
-                   return baseDelay;
-               }
-               
-               const direction = leftHeld ? 'left' : 'right';
+            // キー長押し時間に応じた移動遅延を計算
+            calculateMoveDelay(currentTime) {
+                const baseDelay = 150;
+                const fastDelay = 50;
+                const holdThreshold = 300; // 300ms以上長押しで高速化
+                
+                // カスタムキーまたはデフォルトキーで判定
+                const leftHeld = (this.keyLeft && this.keyLeft.isDown) || this.cursors.left.isDown;
+                const rightHeld = (this.keyRight && this.keyRight.isDown) || this.cursors.right.isDown;
+                
+                if (!leftHeld && !rightHeld) {
+                    this.keyHoldStartTime = {};
+                    return baseDelay;
+                }
+                
+                const direction = leftHeld ? 'left' : 'right';
                
                if (!this.keyHoldStartTime[direction]) {
                    this.keyHoldStartTime[direction] = currentTime;
@@ -2762,8 +3415,8 @@
               }
           }
 
-          rotatePair() {
-              const newRotation = (this.currentPair.rotation + 1) % 4;
+          rotatePair(direction = 1) {
+              const newRotation = (this.currentPair.rotation + direction + 4) % 4;
               const positions = this.getPairPositions(this.currentPair.col, this.currentPair.row, newRotation);
 
               if (this.isValidPosition(positions)) {
@@ -2775,14 +3428,14 @@
               
                   this.tweens.add({
                       targets: this.currentPair.main.sprite,
-                      angle: '+=360',
+                      angle: direction > 0 ? '+=360' : '-=360',
                       duration: 200,
                       ease: 'Back.easeOut'
                   });
 
                   this.tweens.add({
                       targets: this.currentPair.sub.sprite,
-                      angle: '+=360',
+                      angle: direction > 0 ? '+=360' : '-=360',
                       duration: 200,
                       ease: 'Back.easeOut'
                   });
@@ -2876,46 +3529,23 @@
                            }
                        });
                        
-                       // ハードドロップアニメーションを他のプレイヤーに送信
-                       if (ws && ws.readyState === WebSocket.OPEN) {
-                           ws.send(JSON.stringify({
-                               type: 'hard_drop_animation',
-                               data: {
-                                   col: this.currentPair.col,
-                                   startRow: this.currentPair.row - distance,
-                                   endRow: dropRow,
-                                   color: this.currentPair.main.color
-                               }
-                           }));
-                       }
-                   }
-              }
+                        // ハードドロップアニメーションを他のプレイヤーに送信
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({
+                                type: 'hard_drop_animation',
+                                data: {
+                                    col: this.currentPair.col,
+                                    startRow: this.currentPair.row - distance,
+                                    endRow: dropRow,
+                                    color: this.currentPair.main.color
+                                }
+                            }));
+                        }
+                    }
+                }
+            }
 
-              // フィールド全体をバウンドさせるアニメーション
-              const fieldElements = this.children.list.filter(child => 
-                  child.getData('myField') || child.getData('myFieldBorder')
-              );
-              
-               // 自分のぷよも含める
-               const myPuyos = [];
-               for(let r=0; r<ROWS; r++){
-                   for(let c=0; c<COLS; c++){
-                       if(this.grid[r][c]) myPuyos.push(this.grid[r][c]);
-                   }
-               }
-               
-               if (!this.disableAnimations) {
-                   this.tweens.add({
-                       targets: [...fieldElements, ...myPuyos],
-                       y: '+=10',
-                       duration: 50,
-                       yoyo: true,
-                       ease: 'Sine.easeInOut'
-                   });
-               }
-          }
-
-          getPairPositions(col, row, rotation) {
+           getPairPositions(col, row, rotation) {
               const main = { col: col, row: row };
               let sub;
 
@@ -3043,17 +3673,37 @@
                    }
                }
 
-                if (positions.main.row >= 0) {
-                    this.grid[positions.main.row][positions.main.col] = this.currentPair.main.sprite;
-                } else {
-                    this.currentPair.main.sprite.destroy();
-                }
+                 if (positions.main.row >= 0) {
+                     this.grid[positions.main.row][positions.main.col] = this.currentPair.main.sprite;
+                     // .light effect on placed puyo
+                     if (this.currentPair.main.sprite && !this.disableAnimations) {
+                         this.currentPair.main.sprite.setAlpha(0.5);
+                         this.tweens.add({
+                             targets: this.currentPair.main.sprite,
+                             alpha: 1,
+                             duration: 150,
+                             ease: 'Sine.easeOut'
+                         });
+                     }
+                 } else {
+                     this.currentPair.main.sprite.destroy();
+                 }
 
-                if (positions.sub.row >= 0) {
-                    this.grid[positions.sub.row][positions.sub.col] = this.currentPair.sub.sprite;
-                } else {
-                    this.currentPair.sub.sprite.destroy();
-                }
+                 if (positions.sub.row >= 0) {
+                     this.grid[positions.sub.row][positions.sub.col] = this.currentPair.sub.sprite;
+                     // Light effect on placed puyo
+                     if (this.currentPair.sub.sprite && !this.disableAnimations) {
+                         this.currentPair.sub.sprite.setAlpha(0.5);
+                         this.tweens.add({
+                             targets: this.currentPair.sub.sprite,
+                             alpha: 1,
+                             duration: 150,
+                             ease: 'Sine.easeOut'
+                         });
+                     }
+                 } else {
+                     this.currentPair.sub.sprite.destroy();
+                 }
 
                 this.currentPair = null;
   
@@ -4413,38 +5063,56 @@
               }
             
              shakeField() {
-               // フィールドを少し振動させる
-               if (this.myFieldBorder) {
-                   const originalX = this.myFieldBorder.x;
-                   this.tweens.add({
-                       targets: this.myFieldBorder,
-                       x: originalX + 3,
-                       duration: 30,
-                       yoyo: true,
-                       repeat: 2,
-                       onComplete: () => {
-                           this.myFieldBorder.x = originalX;
-                       }
-                   });
-               }
-           }
-           
-           quickShake() {
-               // 短く速い振動（上昇モード用）
-               if (this.myFieldBorder) {
-                   const originalX = this.myFieldBorder.x;
-                   this.tweens.add({
-                       targets: this.myFieldBorder,
-                       x: originalX + 4,
-                       duration: 15,
-                       yoyo: true,
-                       repeat: 2,
-                       onComplete: () => {
-                           this.myFieldBorder.x = originalX;
-                       }
-                   });
-               }
-           }
+                // フィールドを少し振動させる
+                const fieldElements = this.children.list.filter(child => 
+                    child.getData('myField') || child.getData('myFieldBorder')
+                );
+                
+                fieldElements.forEach(el => {
+                    if (el) {
+                        const originalX = el.x;
+                        const originalY = el.y;
+                        this.tweens.add({
+                            targets: el,
+                            x: originalX + 3,
+                            y: originalY + 3,
+                            duration: 30,
+                            yoyo: true,
+                            repeat: 2,
+                            onComplete: () => {
+                                el.x = originalX;
+                                el.y = originalY;
+                            }
+                        });
+                    }
+                });
+            }
+            
+            quickShake() {
+                // 短く速い振動（上昇モード用）
+                const fieldElements = this.children.list.filter(child => 
+                    child.getData('myField') || child.getData('myFieldBorder')
+                );
+                
+                fieldElements.forEach(el => {
+                    if (el) {
+                        const originalX = el.x;
+                        const originalY = el.y;
+                        this.tweens.add({
+                            targets: el,
+                            x: originalX + 4,
+                            y: originalY + 4,
+                            duration: 15,
+                            yoyo: true,
+                            repeat: 2,
+                            onComplete: () => {
+                                el.x = originalX;
+                                el.y = originalY;
+                            }
+                        });
+                    }
+                });
+            }
 
           finalizeGarbageDrop(puyo, col) {
                // 最新のグリッド状況で空き場所を探す

@@ -2,8 +2,43 @@ const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
 const path = require("path");
+const fs = require("fs");
 const discordBot = require("./discord_bot"); // Import Bot
 require('dotenv').config();
+
+// プリセット保存用の設定
+const PRESETS_FILE = path.join(__dirname, 'presets.json');
+let presetsCache = {};
+
+// プリセットを読み込む
+function loadPresets() {
+  try {
+    if (fs.existsSync(PRESETS_FILE)) {
+      const data = fs.readFileSync(PRESETS_FILE, 'utf8');
+      presetsCache = JSON.parse(data);
+      console.log('Presets loaded from file');
+    } else {
+      presetsCache = {};
+      console.log('No presets file found, starting with empty cache');
+    }
+  } catch (error) {
+    console.error('Error loading presets:', error);
+    presetsCache = {};
+  }
+}
+
+// プリセットを保存する
+function savePresets() {
+  try {
+    fs.writeFileSync(PRESETS_FILE, JSON.stringify(presetsCache, null, 2), 'utf8');
+    console.log('Presets saved to file');
+  } catch (error) {
+    console.error('Error saving presets:', error);
+  }
+}
+
+// サーバー起動時にプリセットを読み込む
+loadPresets();
 
 const app = express();
 const server = http.createServer(app);
@@ -206,14 +241,97 @@ function handleMessage(ws, data) {
     case "skill_activated":
       handleSkillActivated(ws, data);
       break;
+    case "kick_player":
+      handleKickPlayer(ws, data);
+      break;
+    case "force_start":
+      handleForceStart(ws);
+      break;
+    case "save_preset":
+      handleSavePreset(ws, data);
+      break;
+    case "load_preset":
+      handleLoadPreset(ws, data);
+      break;
+    case "force_end_game":
+      handleForceEndGame(ws);
+      break;
   }
 }
 
-function updateSettings(ws, data) {
+// ホストによる強制終了
+function handleForceEndGame(ws) {
   if (!ws.roomCode || !ws.isHost) return;
+  
+  const room = rooms.get(ws.roomCode);
+  if (!room || !room.gameStarted) return;
+  
+  // 全プレイヤーにゲーム終了を通知
+  room.players.forEach((player) => {
+    player.send(JSON.stringify({
+      type: "force_game_end",
+      message: "ホストによってゲームが終了されました"
+    }));
+  });
+  
+  // ゲーム終了処理
+  endGame(room, null);
+}
+
+// プリセットを保存
+function handleSavePreset(ws, data) {
+  if (!data.playerName) return;
+  
+  if (!presetsCache[data.playerName]) {
+    presetsCache[data.playerName] = {};
+  }
+  
+  if (data.swipeSettings) {
+    presetsCache[data.playerName].swipeSettings = data.swipeSettings;
+  }
+  
+  if (data.keySettings) {
+    presetsCache[data.playerName].keySettings = data.keySettings;
+  }
+  
+  // ファイルに保存
+  savePresets();
+  
+  ws.send(JSON.stringify({
+    type: "preset_saved",
+    playerName: data.playerName,
+    success: true
+  }));
+}
+
+// プリセットを読み込み
+function handleLoadPreset(ws, data) {
+  if (!data.playerName) return;
+  
+  const preset = presetsCache[data.playerName];
+  
+  ws.send(JSON.stringify({
+    type: "preset_loaded",
+    playerName: data.playerName,
+    preset: preset || null,
+    success: !!preset
+  }));
+}
+
+function updateSettings(ws, data) {
+  if (!ws.roomCode || !ws.isHost) {
+    console.log(`updateSettings rejected: ws.roomCode=${ws.roomCode}, ws.isHost=${ws.isHost}`);
+    return;
+  }
 
   const room = rooms.get(ws.roomCode);
   if (!room) return;
+
+  // 追加検証: ルームのホストが現在のプレイヤーかどうかを確認
+  if (room.host !== ws) {
+    console.log(`updateSettings rejected: sender is not the room host`);
+    return;
+  }
 
   if (data.settings) {
     room.settings = { ...room.settings, ...data.settings };
@@ -245,6 +363,7 @@ function createRoom(ws, data) {
       skillRequiredCount: 20, // スキル発動に必要なぷよ消去数
       animationMode: 'normal', // アニメーション通常 or クイックドロップ
       garbageMode: 'drop', // おじゃま出現方法: drop(落下) or raise(上昇)
+      holdEnabled: true, // ホールド機能のON/OFF
     },
   };
 
@@ -369,6 +488,61 @@ function toggleReady(ws) {
   if (allReady && room.players.length >= 2) {
     startGame(room);
   }
+}
+
+function handleKickPlayer(ws, data) {
+  if (!ws.roomCode || !ws.isHost) return;
+  
+  const room = rooms.get(ws.roomCode);
+  if (!room || room.gameStarted) return;
+  
+  const targetId = data.targetId;
+  if (!targetId || targetId === ws.playerId) return;
+  
+  const targetPlayer = room.players.find(p => p.playerId === targetId);
+  if (!targetPlayer) return;
+  
+  // キックされたプレイヤーに通知
+  targetPlayer.send(JSON.stringify({
+    type: "kicked",
+    message: "ホストによってキックされました"
+  }));
+  
+  // プレイヤーを削除
+  room.players = room.players.filter(p => p.playerId !== targetId);
+  room.playerStates.delete(targetId);
+  
+  targetPlayer.roomCode = null;
+  targetPlayer.isHost = false;
+  
+  broadcastRoomState(room);
+  discordBot.updateRoomInfo(ws.roomCode);
+  
+  console.log(`Player ${targetId} kicked from room: ${ws.roomCode}`);
+}
+
+function handleForceStart(ws) {
+  if (!ws.roomCode || !ws.isHost) return;
+  
+  const room = rooms.get(ws.roomCode);
+  if (!room || room.gameStarted) return;
+  if (room.players.length < 1) return;
+  
+  // 準備完了していないプレイヤーを観戦者に設定
+  room.playerStates.forEach((state, playerId) => {
+    if (!state.ready && !state.isSpectator) {
+      state.isSpectator = true;
+      state.alive = false;
+      
+      // 該当プレイヤーに観戦者設定を通知
+      const player = room.players.find(p => p.playerId === playerId);
+      if (player) {
+        player.isSpectator = true;
+      }
+    }
+  });
+  
+  startGame(room);
 }
 
 function startGame(room) {

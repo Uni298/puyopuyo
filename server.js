@@ -226,6 +226,9 @@ function handleMessage(ws, data) {
     case "update_settings":
       updateSettings(ws, data);
       break;
+    case "update_player_settings":
+      handleUpdatePlayerSettings(ws, data);
+      break;
     case "game_over":
       handleGameOver(ws);
       break;
@@ -240,6 +243,9 @@ function handleMessage(ws, data) {
       break;
     case "skill_activated":
       handleSkillActivated(ws, data);
+      break;
+    case "skill2_activated":
+      handleSkill2Activated(ws, data);
       break;
     case "kick_player":
       handleKickPlayer(ws, data);
@@ -275,7 +281,50 @@ function handleForceEndGame(ws) {
   });
   
   // ゲーム終了処理
-  endGame(room, null);
+  if (room.alivePlayers.length === 1 || room.alivePlayers.length === 0) {
+    const winnerId = room.alivePlayers.length === 1 ? room.alivePlayers[0] : null;
+
+    const playerScores = Array.from(room.playerStates.values())
+      .filter((p) => !p.isSpectator)
+      .sort((a, b) => (b.score || 0) - (a.score || 0))
+      .map((p, index) => ({
+        id: p.id,
+        name: p.name,
+        score: p.score || 0,
+        totalGarbageSent: p.totalGarbageSent || 0,
+        totalGarbageReceived: p.totalGarbageReceived || 0,
+        rank: index + 1,
+        isWinner: p.id === winnerId,
+      }));
+
+    room.players.forEach((player) => {
+      player.send(
+        JSON.stringify({
+          type: "game_end",
+          winnerId: winnerId,
+          isWinner: player.playerId === winnerId,
+          scoreboard: playerScores,
+        }),
+      );
+    });
+
+    // Discord Bot Notification
+    if (winnerId) {
+        const winnerName = room.playerStates.get(winnerId)?.name || 'Unknown';
+        if (room.code) {
+            discordBot.notifyGameEnd(room.code, winnerName);
+        }
+    }
+
+    if (room.resetTimeout) clearTimeout(room.resetTimeout);
+    room.resetTimeout = setTimeout(() => {
+      room.gameStarted = false;
+      broadcastRoomState(room);
+      discordBot.updateRoomInfo(room.code);
+    }, 5000);
+  }
+  
+  room.gameStarted = false;
 }
 
 // プリセットを保存
@@ -359,7 +408,7 @@ function createRoom(ws, data) {
       defeatTime: 10,
       garbageDelay: 3,
       garbagePrediction: true, // デフォルトでON
-      skillEnabled: true, // スキル機能のON/OFF
+      skillType: 1, // 0: None, 1: Skill 1, 2: Skill 2
       skillRequiredCount: 20, // スキル発動に必要なぷよ消去数
       animationMode: 'normal', // アニメーション通常 or クイックドロップ
       garbageMode: 'drop', // おじゃま出現方法: drop(落下) or raise(上昇)
@@ -375,6 +424,9 @@ function createRoom(ws, data) {
     name: playerName,
     score: 0,
     isSpectator: false,
+    garbageMultiplier: 1.0,
+    totalGarbageSent: 0,
+    totalGarbageReceived: 0,
   });
 
   rooms.set(roomCode, room);
@@ -408,7 +460,7 @@ function joinRoom(ws, data) {
   }
 
   if (room.gameStarted) {
-    // ゲーム中の場合�E観戦モードで参加
+    // ゲーム中の場合E観戦モードで参加
     room.players.push(ws);
     const playerName = data.playerName || `Spectator ${room.players.length}`;
     room.playerStates.set(ws.playerId, {
@@ -418,6 +470,8 @@ function joinRoom(ws, data) {
       name: playerName,
       score: 0,
       isSpectator: true,
+      totalGarbageSent: 0,
+      totalGarbageReceived: 0,
     });
 
     ws.roomCode = data.roomCode;
@@ -446,6 +500,9 @@ function joinRoom(ws, data) {
     name: playerName,
     score: 0,
     isSpectator: false,
+    garbageMultiplier: 1.0,
+    totalGarbageSent: 0,
+    totalGarbageReceived: 0,
   });
 
   ws.roomCode = data.roomCode;
@@ -559,6 +616,8 @@ function startGame(room) {
       state.alive = true;
       state.ready = false;
       state.score = 0;
+      state.totalGarbageSent = 0;
+      state.totalGarbageReceived = 0;
     }
   });
 
@@ -609,6 +668,28 @@ function leaveRoom(ws) {
         type: "you_are_host",
       }),
     );
+    
+    // ホスト交代を他のプレイヤーに通知
+    room.players.forEach((player) => {
+      if (player.playerId !== ws.playerId) {
+        player.send(JSON.stringify({
+          type: "host_changed",
+          newHostId: room.host.playerId
+        }));
+      }
+    });
+  }
+
+  // プレイヤーが退出したことを通知（ゲーム中のみ）
+  if (room.gameStarted && room.players.length > 0) {
+    room.players.forEach((player) => {
+      if (player.playerId !== ws.playerId) {
+        player.send(JSON.stringify({
+          type: "player_left",
+          playerId: ws.playerId
+        }));
+      }
+    });
   }
 
   if (room.players.length === 0) {
@@ -635,8 +716,6 @@ function handleDisconnect(ws) {
 function broadcastRoomState(room) {
   const state = {
     type: "room_state",
-    players: Array.from(room.playerStates.values()),
-    hostId: room.host.playerId,
     players: Array.from(room.playerStates.values()),
     hostId: room.host.playerId,
     gameStarted: room.gameStarted,
@@ -678,6 +757,21 @@ function broadcastGameUpdate(ws, data) {
   });
 }
 
+function handleUpdatePlayerSettings(ws, data) {
+  if (!ws.roomCode) return;
+  const room = rooms.get(ws.roomCode);
+  if (!room) return;
+
+  const playerState = room.playerStates.get(ws.playerId);
+  if (!playerState) return;
+
+  if (data.garbageMultiplier !== undefined) {
+    playerState.garbageMultiplier = parseFloat(data.garbageMultiplier);
+  }
+
+  broadcastRoomState(room);
+}
+
 function sendGarbage(ws, data) {
   if (!ws.roomCode) return;
 
@@ -701,29 +795,38 @@ function sendGarbage(ws, data) {
       aliveOpponents[Math.floor(Math.random() * aliveOpponents.length)];
   }
 
-  // ターゲチE��を記録
+  // ターゲチEを記録
   room.playerTargets.set(ws.playerId, targetId);
 
   const targetPlayer = room.players.find((p) => p.playerId === targetId);
+  const targetState = room.playerStates.get(targetId);
+  const attackerState = room.playerStates.get(ws.playerId);
 
-  if (targetPlayer) {
-    // ターゲチE��に送信
+  if (targetPlayer && targetState && attackerState) {
+    const multiplier = targetState.garbageMultiplier || 1.0;
+    const finalAmount = Math.floor(data.amount * multiplier);
+
+    // 累計おじゃま送信・受信数を更新
+    attackerState.totalGarbageSent = (attackerState.totalGarbageSent || 0) + finalAmount;
+    targetState.totalGarbageReceived = (targetState.totalGarbageReceived || 0) + finalAmount;
+
+    // ターゲチEに送信
     targetPlayer.send(
       JSON.stringify({
         type: "receive_garbage",
         fromPlayerId: ws.playerId,
-        amount: data.amount,
+        amount: finalAmount,
         colors: data.colors,
         sourcePositions: data.positions,
       }),
     );
 
-    // 攻撁E�E�E��E刁E��に送信通知を送る�E�アニメーション用�E�E
+    // 攻撁EEEE刁Eに送信通知を送るEアニメーション用EE
     ws.send(
       JSON.stringify({
         type: "attack_ack",
         targetId: targetId,
-        amount: data.amount,
+        amount: finalAmount,
         sourcePositions: data.positions,
       }),
     );
@@ -736,7 +839,7 @@ function sendGarbage(ws, data) {
             type: "third_party_attack",
             fromPlayerId: ws.playerId,
             toPlayerId: targetId,
-            amount: data.amount,
+            amount: finalAmount,
             sourcePositions: data.positions,
           }),
         );
@@ -773,10 +876,8 @@ function handleGameOver(ws) {
 }
 
 function checkGameEnd(room) {
-  if (room.alivePlayers.length === 1) {
-
-    const winnerId = room.alivePlayers[0];
-
+  if (room.alivePlayers.length === 1 || room.alivePlayers.length === 0) {
+    const winnerId = room.alivePlayers.length === 1 ? room.alivePlayers[0] : null;
 
     const playerScores = Array.from(room.playerStates.values())
       .filter((p) => !p.isSpectator)
@@ -785,6 +886,8 @@ function checkGameEnd(room) {
         id: p.id,
         name: p.name,
         score: p.score || 0,
+        totalGarbageSent: p.totalGarbageSent || 0,
+        totalGarbageReceived: p.totalGarbageReceived || 0,
         rank: index + 1,
         isWinner: p.id === winnerId,
       }));
@@ -801,11 +904,11 @@ function checkGameEnd(room) {
     });
 
     // Discord Bot Notification
-    const winnerName = room.playerStates.get(winnerId)?.name || 'Unknown';
-    // We need roomCode. Assuming it's added to room object or we search.
-    // I will add code to room object in createRoom later if needed.
-    if (room.code) {
-        discordBot.notifyGameEnd(room.code, winnerName);
+    if (winnerId) {
+        const winnerName = room.playerStates.get(winnerId)?.name || 'Unknown';
+        if (room.code) {
+            discordBot.notifyGameEnd(room.code, winnerName);
+        }
     }
 
 
@@ -818,48 +921,8 @@ function checkGameEnd(room) {
           state.ready = false;
           state.alive = true;
           state.score = 0;
-        }
-      });
-      if (room.playerTargets) {
-        room.playerTargets.clear();
-      }
-      room.resetTimeout = null;
-      broadcastRoomState(room);
-      discordBot.updateRoomInfo(room.code);
-    }, 3000);
-  } else if (room.alivePlayers.length === 0) {
-
-    const playerScores = Array.from(room.playerStates.values())
-      .filter((p) => !p.isSpectator)
-      .sort((a, b) => (b.score || 0) - (a.score || 0))
-      .map((p, index) => ({
-        id: p.id,
-        name: p.name,
-        score: p.score || 0,
-        rank: index + 1,
-        isWinner: false,
-      }));
-
-    room.players.forEach((player) => {
-      player.send(
-        JSON.stringify({
-          type: "game_end",
-          winnerId: null,
-          isWinner: false,
-          scoreboard: playerScores,
-        }),
-      );
-    });
-
-    if (room.resetTimeout) clearTimeout(room.resetTimeout);
-    room.resetTimeout = setTimeout(() => {
-      room.gameStarted = false;
-      room.alivePlayers = [];
-      room.playerStates.forEach((state) => {
-        if (!state.isSpectator) {
-          state.ready = false;
-          state.alive = true;
-          state.score = 0;
+          state.totalGarbageSent = 0;
+          state.totalGarbageReceived = 0;
         }
       });
       if (room.playerTargets) {
@@ -898,7 +961,7 @@ function handleSkillActivated(ws, data) {
   if (!room) return;
 
   // スキルが無効な場合は何もしない
-  if (room.settings && room.settings.skillEnabled === false) return;
+  if (room.settings && room.settings.skillType !== 1) return;
 
   const playerState = room.playerStates.get(ws.playerId);
   const playerName = playerState ? playerState.name : 'Unknown';
@@ -915,6 +978,43 @@ function handleSkillActivated(ws, data) {
       );
     }
   });
+}
+
+function handleSkill2Activated(ws, data) {
+  if (!ws.roomCode) return;
+
+  const room = rooms.get(ws.roomCode);
+  if (!room) return;
+
+  // スキル2が無効な場合は何もしない
+  if (room.settings && room.settings.skillType !== 2) return;
+
+  // 自分以外の生存プレイヤーをリストアップ
+  const otherAlivePlayers = room.players.filter(p => p.playerId !== ws.playerId && room.alivePlayers.includes(p.playerId));
+  if (otherAlivePlayers.length === 0) return;
+
+  // ランダムなターゲットを選択
+  const targetPlayer = otherAlivePlayers[Math.floor(Math.random() * otherAlivePlayers.length)];
+  
+  if (targetPlayer) {
+    targetPlayer.send(
+      JSON.stringify({
+        type: "skill2_applied",
+        fromPlayerId: ws.playerId,
+      }),
+    );
+    
+    // 他のプレイヤー（ターゲット以外）にも通知（任意、演出用）
+    room.players.forEach((player) => {
+        if (player.playerId !== ws.playerId && player.playerId !== targetPlayer.playerId) {
+            player.send(JSON.stringify({
+                type: "skill2_activated_broadcast",
+                fromPlayerId: ws.playerId,
+                toPlayerId: targetPlayer.playerId
+            }));
+        }
+    });
+  }
 }
 
 const PORT = process.env.PORT || 3000;

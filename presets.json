@@ -1,0 +1,154 @@
+{
+  "Uni": {
+    "swipeSettings": {
+      "threshold": 10,
+      "boundaries": [
+        45,
+        135,
+        225,
+        315
+      ]
+    },
+    "keySettings": {
+      "left": [
+        "ArrowLeft"
+      ],
+      "right": [
+        "ArrowRight"
+      ],
+      "down": [
+        "ArrowDown"
+      ],
+      "rotate": [
+        "ArrowUp"
+      ],
+      "rotateCCW": [
+        "KeyZ"
+      ],
+      "hold": [
+        "ShiftLeft"
+      ],
+      "hardDrop": [
+        "KeyP",
+        "ArrowDown"
+      ]
+    }
+  },
+  "sb": {
+    "keySettings": {
+      "left": [
+        "ArrowLeft",
+        "ArrowLeft"
+      ],
+      "right": [
+        "ArrowRight",
+        "ArrowRight"
+      ],
+      "down": [
+        "KeyZ",
+        "KeyZ"
+      ],
+      "rotate": [
+        "ArrowUp",
+        "KeyD"
+      ],
+      "rotateCCW": [
+        "KeyA"
+      ],
+      "hold": [
+        "ShiftLeft"
+      ],
+      "hardDrop": [
+        "Space",
+        "ArrowDown"
+      ]
+    }
+  },
+  "Uni298": {
+    "swipeSettings": {
+      "threshold": 16,
+      "boundaries": [
+        45,
+        135,
+        225,
+        315
+      ]
+    },
+    "keySettings": {
+      "left": [
+        "ArrowLeft"
+      ],
+      "right": [
+        "ArrowRight"
+      ],
+      "down": [
+        "ArrowDown"
+      ],
+      "rotate": [
+        "ArrowUp"
+      ],
+      "rotateCCW": [
+        "KeyZ"
+      ],
+      "hold": [
+        "ShiftLeft"
+      ],
+      "hardDrop": [
+        "KeyP",
+        "KeyP"
+      ]
+    }
+  },
+  "sbl": {
+    "keySettings": {
+      "left": [
+        "ArrowLeft"
+      ],
+      "right": [
+        "ArrowRight"
+      ],
+      "down": [
+        "ArrowDown"
+      ],
+      "rotate": [
+        "KeyD"
+      ],
+      "rotateCCW": [
+        "KeyA"
+      ],
+      "hold": [
+        "ShiftLeft"
+      ],
+      "hardDrop": [
+        "Space",
+        "ArrowDown"
+      ]
+    }
+  },
+  "U": {
+    "keySettings": {
+      "left": [
+        "ArrowLeft"
+      ],
+      "right": [
+        "ArrowRight"
+      ],
+      "down": [
+        "ArrowDown"
+      ],
+      "rotate": [
+        "ArrowUp"
+      ],
+      "rotateCCW": [
+        "KeyZ"
+      ],
+      "hold": [
+        "ShiftLeft"
+      ],
+      "hardDrop": [
+        "KeyP",
+        "ArrowDown"
+      ]
+    }
+  }
+}

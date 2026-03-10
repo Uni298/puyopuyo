@@ -408,13 +408,19 @@
                     ホールド機能
                 </label>
             </div>
-            <div>
+            <div style="margin-bottom: 8px;">
                 <label for="defeatTime">敗北猶予: </label>
                 <input type="number" id="defeatTime" min="3" max="60" step="1" value="10" style="width: 60px;"> 秒
             </div>
             <div style="margin-top: 8px;">
                 <label for="garbageDelay">おじゃま出現ラグ: </label>
                 <input type="number" id="garbageDelay" min="0" max="10" step="1" value="3" style="width: 60px;"> 秒
+            </div>
+            <div style="margin-top: 8px;">
+                <label for="disableDuelView">
+                    <input type="checkbox" id="disableDuelView">
+                    Duel移行時に1v1画面にしない
+                </label>
             </div>
             <div style="margin-top: 8px;">
                 <label for="disableAnimations">
@@ -439,10 +445,12 @@
             <div style="margin-top: 15px; padding-top: 10px; border-top: 1px solid #e1e4e8;">
                 <h4 style="margin-bottom: 10px; color: #2c3e50;">スキル設定</h4>
                 <div style="margin-bottom: 8px;">
-                    <label for="skillEnabled">
-                        <input type="checkbox" id="skillEnabled" checked>
-                        スキルを有効にする
-                    </label>
+                    <label for="skillType">スキル種類: </label>
+                    <select id="skillType" style="width: 150px;">
+                        <option value="0">なし</option>
+                        <option value="1" selected>スキル1（目くらまし）</option>
+                        <option value="2">スキル2（NEXTお邪魔）</option>
+                    </select>
                 </div>
                 <div style="margin-bottom: 8px;">
                     <label for="skillRequiredCount">発動に必要な個数: </label>
@@ -456,6 +464,38 @@
                     </select>
                 </div>
             </div>
+        </div>
+
+        <div id="personalSettings" style="margin: 15px 0; padding: 15px; background: #fff3cd; border-radius: 12px; border: 1px solid #ffeeba; text-align: left;">
+            <h4 style="margin: 0 0 10px 0; color: #856404; font-size: 14px;">個人設定（ハンデ・画面設定）</h4>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                <label for="myGarbageMultiplier" style="font-size: 13px; font-weight: bold; color: #856404;">受けるおじゃま量:</label>
+                <select id="myGarbageMultiplier" onchange="updatePlayerSettings()" style="padding: 5px; border-radius: 5px; border: 1px solid #ffeeba; background: white; font-weight: bold;">
+                    <option value="1.0">1.0倍 (標準)</option>
+                    <option value="1.25">1.25倍</option>
+                    <option value="1.5">1.5倍</option>
+                    <option value="1.75">1.75倍</option>
+                    <option value="2.0">2.0倍</option>
+                    <option value="2.25">2.25倍</option>
+                    <option value="2.5">2.5倍</option>
+                    <option value="2.75">2.75倍</option>
+                    <option value="3.0">3.0倍</option>
+                </select>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;">
+                <label for="disableDuelView" style="font-size: 13px; font-weight: bold; color: #856404;">Duel移行時に1v1画面にしない</label>
+                <input type="checkbox" id="disableDuelView" style="width: 20px; height: 20px;">
+            </div>
+            <div style="display: flex; align-items: center; justify-content: space-between;">
+                <label for="nextDisplayY" style="font-size: 13px; font-weight: bold; color: #856404;">NEXTの表示位置 (高さ):</label>
+                <select id="nextDisplayY" style="padding: 5px; border-radius: 5px; border: 1px solid #ffeeba; background: white; font-weight: bold;">
+                    <option value="100">高め</option>
+                    <option value="200" selected>標準</option>
+                    <option value="300">低め</option>
+                    <option value="400">かなり低め</option>
+                </select>
+            </div>
+            <p style="margin: 8px 0 0 0; font-size: 11px; color: #856404;">※数値を上げると自分が不利になります</p>
         </div>
 
         <button id="readyBtn" class="btn" onclick="toggleReady()">
@@ -520,6 +560,7 @@
       let myPlayerId = null;
       let myReady = false;
       let allPlayers = [];
+      let isReconnecting = false;
 
       // スワイプ設定関連
       const PRESETS_STORAGE_KEY = 'puyopuyo_presets';
@@ -1067,7 +1108,7 @@
       }
 
       function disableSettingsInputs() {
-          const inputs = ['garbageRate', 'dropSpeed', 'defeatTime', 'garbageDelay', 'skillEnabled', 'skillRequiredCount', 'animationMode', 'garbageMode', 'holdEnabled'];
+          const inputs = ['garbageRate', 'dropSpeed', 'defeatTime', 'garbageDelay', 'skillType', 'skillRequiredCount', 'animationMode', 'garbageMode', 'holdEnabled'];
           inputs.forEach(id => {
               const el = document.getElementById(id);
               if (el) el.disabled = true;
@@ -1075,7 +1116,7 @@
       }
 
       function enableSettingsInputs() {
-          const inputs = ['garbageRate', 'dropSpeed', 'defeatTime', 'garbageDelay', 'skillEnabled', 'skillRequiredCount', 'animationMode', 'garbageMode', 'holdEnabled'];
+          const inputs = ['garbageRate', 'dropSpeed', 'defeatTime', 'garbageDelay', 'skillType', 'skillRequiredCount', 'animationMode', 'garbageMode', 'holdEnabled'];
           inputs.forEach(id => {
               const el = document.getElementById(id);
               if (el) el.disabled = false;
@@ -1157,6 +1198,11 @@
                       playerName: playerName,
                       keySettings: keySettings
                   }));
+              }
+
+              // 実行中のゲームがあれば設定を即座に反映
+              if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
+                  game.scene.scenes[0].setupCustomKeyBindings();
               }
               
               showNotification(`'${playerName}' のキー設定を保存しました`, 3000);
@@ -1302,11 +1348,31 @@
       }
 
       function connectWebSocket() {
+          if (ws) {
+              ws.onclose = null;
+              ws.close();
+          }
           const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
           ws = new WebSocket(`${protocol}//${window.location.host}`);
 
           ws.onopen = () => {
               console.log('Connected to server');
+              const statusDiv = document.getElementById('status');
+              if (statusDiv) {
+                  statusDiv.innerHTML = 'サーバーに接続しました';
+                  statusDiv.style.color = '#666';
+              }
+              
+              if (isReconnecting && currentRoom) {
+                  const playerName = document.getElementById('playerNameInput').value.trim();
+                  ws.send(JSON.stringify({
+                      type: 'join_room',
+                      roomCode: currentRoom,
+                      playerName: playerName || undefined
+                  }));
+                  showNotification('サーバーに再接続しました。ルームに復帰します。', 3000);
+              }
+              isReconnecting = false;
           };
 
           ws.onmessage = (event) => {
@@ -1316,10 +1382,13 @@
 
           ws.onclose = onSocketClose;
 
-
           ws.onerror = (error) => {
-              console.error('WebSocket error:', error);
-          };
+                console.error('WebSocket error:', error);
+                const statusDiv = document.getElementById('status');
+                if (statusDiv) {
+                    statusDiv.innerHTML = '<span style="color:red">接続エラーが発生しました。再接続しています...</span>';
+                }
+            };
       }
 
       function handleServerMessage(data) {
@@ -1340,7 +1409,7 @@
                                           dropSpeed: parseInt(document.getElementById('dropSpeed').value),
                                           defeatTime: parseInt(document.getElementById('defeatTime').value),
                                           garbageDelay: parseInt(document.getElementById('garbageDelay').value),
-                                          skillEnabled: document.getElementById('skillEnabled').checked,
+                                          skillType: parseInt(document.getElementById('skillType').value),
                                           skillRequiredCount: parseInt(document.getElementById('skillRequiredCount').value),
                                           animationMode: document.getElementById('animationMode').value,
                                           garbageMode: document.getElementById('garbageMode').value,
@@ -1354,7 +1423,7 @@
                      document.getElementById('dropSpeed').disabled = false;
                      document.getElementById('defeatTime').disabled = false;
                      document.getElementById('garbageDelay').disabled = false;
-                      document.getElementById('skillEnabled').disabled = false;
+                      document.getElementById('skillType').disabled = false;
                       document.getElementById('skillRequiredCount').disabled = false;
                       document.getElementById('animationMode').disabled = false;
                       document.getElementById('garbageMode').disabled = false;
@@ -1364,12 +1433,11 @@
                      document.getElementById('dropSpeed').onchange = updateSettings;
                      document.getElementById('defeatTime').onchange = updateSettings;
                       document.getElementById('garbageDelay').onchange = updateSettings;
-                      document.getElementById('skillEnabled').onchange = updateSettings;
+                      document.getElementById('skillType').onchange = updateSettings;
                       document.getElementById('skillRequiredCount').onchange = updateSettings;
                       document.getElementById('animationMode').onchange = updateSettings;
                       document.getElementById('garbageMode').onchange = updateSettings;
                       document.getElementById('holdEnabled').onchange = updateSettings;
-                     // document.getElementById('garbagePrediction').onchange = updateSettings;
                    break;
 
               case 'room_joined':
@@ -1399,6 +1467,88 @@
                    } else {
                        document.getElementById('status').textContent = `${data.players.filter(p => p.ready).length}/${data.players.length} 人準備完了`;
                    }
+
+                    // 設定反映
+                     if (data.settings) {
+                         const garbageInput = document.getElementById('garbageRate');
+                         const dropInput = document.getElementById('dropSpeed');
+                         const defeatInput = document.getElementById('defeatTime');
+                          const delayInput = document.getElementById('garbageDelay');
+                          const skillTypeInput = document.getElementById('skillType');
+                          const skillRequiredInput = document.getElementById('skillRequiredCount');
+                          const animationModeInput = document.getElementById('animationMode');
+                          const garbageModeInput = document.getElementById('garbageMode');
+                          const holdEnabledInput = document.getElementById('holdEnabled');
+                         
+                         if (document.activeElement !== garbageInput) garbageInput.value = data.settings.garbageRate;
+                         if (document.activeElement !== dropInput) dropInput.value = data.settings.dropSpeed || 500;
+                         if (document.activeElement !== defeatInput) defeatInput.value = data.settings.defeatTime || 10;
+                         if (document.activeElement !== delayInput) delayInput.value = data.settings.garbageDelay !== undefined ? data.settings.garbageDelay : 3;
+                         if (document.activeElement !== skillTypeInput) skillTypeInput.value = data.settings.skillType !== undefined ? data.settings.skillType : 1;
+                         if (document.activeElement !== skillRequiredInput) skillRequiredInput.value = data.settings.skillRequiredCount || 20;
+                         if (document.activeElement !== animationModeInput) animationModeInput.value = data.settings.animationMode || 'normal';
+                         if (document.activeElement !== garbageModeInput) garbageModeInput.value = data.settings.garbageMode || 'drop';
+                         if (document.activeElement !== holdEnabledInput) holdEnabledInput.checked = data.settings.holdEnabled !== undefined ? data.settings.holdEnabled : true;
+                         
+                         // ホスト以外は無効化
+                         const isMyHost = (data.hostId === myPlayerId);
+                         garbageInput.disabled = !isMyHost;
+                         dropInput.disabled = !isMyHost;
+                         defeatInput.disabled = !isMyHost;
+                         delayInput.disabled = !isMyHost;
+                         skillTypeInput.disabled = !isMyHost;
+                         skillRequiredInput.disabled = !isMyHost;
+                         animationModeInput.disabled = !isMyHost;
+                         garbageModeInput.disabled = !isMyHost;
+                         holdEnabledInput.disabled = !isMyHost;
+
+                         // Discordボタンは全員に表示
+                        const discordBtn = document.getElementById('copyDiscordCmdBtn');
+                        if (discordBtn) {
+                            discordBtn.style.display = 'inline-block';
+                        }
+                        
+                         // ホスト権限更新
+                         if (isMyHost) {
+                              const updateSettings = () => {
+                                  if (ws && ws.readyState === WebSocket.OPEN) {
+                                      ws.send(JSON.stringify({
+                                          type: 'update_settings',
+                                          settings: { 
+                                              garbageRate: parseFloat(garbageInput.value),
+                                              dropSpeed: parseInt(dropInput.value),
+                                              defeatTime: parseInt(defeatInput.value),
+                                              garbageDelay: parseInt(delayInput.value),
+                                              skillType: parseInt(skillTypeInput.value),
+                                              skillRequiredCount: parseInt(skillRequiredInput.value),
+                                              animationMode: animationModeInput.value,
+                                              garbageMode: garbageModeInput.value,
+                                              holdEnabled: holdEnabledInput.checked
+                                          }
+                                      }));
+                                  }
+                              };
+                               garbageInput.onchange = updateSettings;
+                               dropInput.onchange = updateSettings;
+                               defeatInput.onchange = updateSettings;
+                               delayInput.onchange = updateSettings;
+                               skillTypeInput.onchange = updateSettings;
+                               skillRequiredInput.onchange = updateSettings;
+                               animationModeInput.onchange = updateSettings;
+                               garbageModeInput.onchange = updateSettings;
+                               holdEnabledInput.onchange = updateSettings;
+                           } else {
+                               garbageInput.onchange = null;
+                               dropInput.onchange = null;
+                               defeatInput.onchange = null;
+                              delayInput.onchange = null;
+                              skillTypeInput.onchange = null;
+                              skillRequiredInput.onchange = null;
+                              animationModeInput.onchange = null;
+                              garbageModeInput.onchange = null;
+                              holdEnabledInput.onchange = null;
+                         }
+                    }
                    break;
 
                case 'preset_loaded':
@@ -1425,89 +1575,6 @@
                        
                        localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(presets));
                    }
-                  
-                    // 設定反映
-                     if (data.settings) {
-                         const garbageInput = document.getElementById('garbageRate');
-                         const dropInput = document.getElementById('dropSpeed');
-                         const defeatInput = document.getElementById('defeatTime');
-                          const delayInput = document.getElementById('garbageDelay');
-                          const skillEnabledInput = document.getElementById('skillEnabled');
-                          const skillRequiredInput = document.getElementById('skillRequiredCount');
-                          const animationModeInput = document.getElementById('animationMode');
-                          const garbageModeInput = document.getElementById('garbageMode');
-                          const holdEnabledInput = document.getElementById('holdEnabled');
-                          
-                         if (document.activeElement !== garbageInput) garbageInput.value = data.settings.garbageRate;
-                         if (document.activeElement !== dropInput) dropInput.value = data.settings.dropSpeed || 500;
-                         if (document.activeElement !== defeatInput) defeatInput.value = data.settings.defeatTime || 10;
-                         if (document.activeElement !== delayInput) delayInput.value = data.settings.garbageDelay !== undefined ? data.settings.garbageDelay : 3;
-                         if (document.activeElement !== skillEnabledInput) skillEnabledInput.checked = data.settings.skillEnabled !== undefined ? data.settings.skillEnabled : true;
-                         if (document.activeElement !== skillRequiredInput) skillRequiredInput.value = data.settings.skillRequiredCount || 20;
-                         if (document.activeElement !== animationModeInput) animationModeInput.value = data.settings.animationMode || 'normal';
-                         if (document.activeElement !== garbageModeInput) garbageModeInput.value = data.settings.garbageMode || 'drop';
-                         if (document.activeElement !== holdEnabledInput) holdEnabledInput.checked = data.settings.holdEnabled !== undefined ? data.settings.holdEnabled : true;
-                         
-                         // ホスト以外は無効化
-                         const isMyHost = (data.hostId === myPlayerId);
-                         garbageInput.disabled = !isMyHost;
-                         dropInput.disabled = !isMyHost;
-                         defeatInput.disabled = !isMyHost;
-                         delayInput.disabled = !isMyHost;
-                         skillEnabledInput.disabled = !isMyHost;
-                         skillRequiredInput.disabled = !isMyHost;
-                         animationModeInput.disabled = !isMyHost;
-                         garbageModeInput.disabled = !isMyHost;
-                         holdEnabledInput.disabled = !isMyHost;
-                        // garbagePrediction disabled logic removed
-
-                         // Discordボタンは全員に表示
-                        const discordBtn = document.getElementById('copyDiscordCmdBtn');
-                        if (discordBtn) {
-                            discordBtn.style.display = 'inline-block';
-                        }
-                        
-                         // ホスト権限更新
-                         if (isMyHost) {
-                              const updateSettings = () => {
-                                  if (ws && ws.readyState === WebSocket.OPEN) {
-                                      ws.send(JSON.stringify({
-                                          type: 'update_settings',
-                                          settings: { 
-                                              garbageRate: parseFloat(garbageInput.value),
-                                              dropSpeed: parseInt(dropInput.value),
-                                              defeatTime: parseInt(defeatInput.value),
-                                              garbageDelay: parseInt(delayInput.value),
-                                              skillEnabled: skillEnabledInput.checked,
-                                              skillRequiredCount: parseInt(skillRequiredInput.value),
-                                              animationMode: animationModeInput.value,
-                                              garbageMode: garbageModeInput.value,
-                                              holdEnabled: holdEnabledInput.checked
-                                          }
-                                      }));
-                                  }
-                              };
-                               garbageInput.onchange = updateSettings;
-                               dropInput.onchange = updateSettings;
-                               defeatInput.onchange = updateSettings;
-                               delayInput.onchange = updateSettings;
-                               skillEnabledInput.onchange = updateSettings;
-                               skillRequiredInput.onchange = updateSettings;
-                               animationModeInput.onchange = updateSettings;
-                               garbageModeInput.onchange = updateSettings;
-                               holdEnabledInput.onchange = updateSettings;
-                           } else {
-                               garbageInput.onchange = null;
-                               dropInput.onchange = null;
-                               defeatInput.onchange = null;
-                              delayInput.onchange = null;
-                              skillEnabledInput.onchange = null;
-                              skillRequiredInput.onchange = null;
-                              animationModeInput.onchange = null;
-                              garbageModeInput.onchange = null;
-                              holdEnabledInput.onchange = null;
-                         }
-                    }
                   break;
 
                case 'game_start':
@@ -1538,7 +1605,7 @@
                        
                         // スキル設定を適用
                          if (data.settings) {
-                             scene.skillEnabled = data.settings.skillEnabled !== undefined ? data.settings.skillEnabled : true;
+                             scene.skillType = data.settings.skillType !== undefined ? data.settings.skillType : 1;
                              scene.skillGaugeMax = data.settings.skillRequiredCount || 20;
                          }
                        
@@ -1641,9 +1708,25 @@
                     returnToLobby();
                     break;
 
-               case 'kicked':
-                    alert(data.message || 'ホストによってキックされました');
-                    location.reload();
+                case 'kicked':
+                     alert(data.message || 'ホストによってキックされました');
+                     location.reload();
+                     break;
+                
+                case 'player_left':
+                    // プレイヤーが退出した情報をログに表示
+                    if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
+                        const scene = game.scene.scenes[0];
+                        const player = scene.players.find(p => p.id === data.playerId);
+                        const playerName = player ? player.name : 'Unknown';
+                        console.log(`Player left: ${playerName} (${data.playerId})`);
+                    }
+                    break;
+                
+                case 'host_changed':
+                    // ホスト交代の情報を表示
+                    alert('ホストが退出しました。新しいホストになりました。');
+                    isHost = true;
                     break;
 
                 case 'ping':
@@ -1661,38 +1744,42 @@
                      }
                      break;
 
-               case 'force_game_end':
-                   // ホストによる強制終了
+               case 'skill2_applied':
                    if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
-                       const scene = game.scene.scenes[0];
-                       if (!scene.gameOver) {
-                           scene.gameOver = true;
-                           if (scene.dropTimer) {
-                               scene.dropTimer.remove();
-                           }
-                           showNotification(data.message || 'ホストによってゲームが終了されました', 5000);
-                           
-                           // 3秒後にロビーに戻る
-                           setTimeout(() => {
-                               scene.resetGame();
-                               scene.gameStarted = false;
-                               scene.gameOver = false;
-                               returnToLobby();
-                           }, 3000);
-                       }
+                       game.scene.scenes[0].applySkill2ToNext();
                    }
                    break;
+
+               case 'force_game_end':
+                    // ホストによる強制終了
+                    if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
+                        const scene = game.scene.scenes[0];
+                        if (!scene.gameOver) {
+                            scene.gameOver = true;
+                            if (scene.dropTimer) {
+                                scene.dropTimer.remove();
+                            }
+                            showNotification(data.message || 'ホストによってゲームが終了されました', 5000);
+                            
+                            // スコアボードを表示
+                            scene.showScoreboard([], isHost);
+                            
+                            // NEXTボタンでロビーに戻る
+                            // (自動的に戻らない)
+                        }
+                    }
+                    break;
             }
         }
 
       function onSocketClose() {
+           console.log('WebSocket closed');
+           isReconnecting = true;
            const statusDiv = document.getElementById('status');
            if (statusDiv) {
-               statusDiv.innerHTML = '<span style="color:red">サーバーから切断されました。再読み込みしてください。</span>';
+               statusDiv.innerHTML = '<span style="color:red">切断されました。再接続を試みています...</span>';
            }
-           if (game) {
-               alert('サーバーから切断されました');
-           }
+           setTimeout(connectWebSocket, 3000);
       }
       
       function escapeHtml(text) {
@@ -1740,10 +1827,47 @@
           // プレイヤー名入力時にプリセットを読み込む
           const playerNameInput = document.getElementById('playerNameInput');
           if (playerNameInput) {
+              // 最後に使用した名前を復元
+              const lastPlayerName = localStorage.getItem('puyopuyo_last_player_name');
+              if (lastPlayerName) {
+                  playerNameInput.value = lastPlayerName;
+                  loadSwipePreset(lastPlayerName);
+                  loadKeySettings();
+              }
+
               playerNameInput.addEventListener('change', () => {
                   const name = playerNameInput.value.trim();
+                  localStorage.setItem('puyopuyo_last_player_name', name);
                   loadSwipePreset(name);
                   loadKeySettings();
+              });
+          }
+
+          // NEXT表示位置の変更時に反映
+          const nextDisplayYSelect = document.getElementById('nextDisplayY');
+          if (nextDisplayYSelect) {
+              // 前回保存された設定があれば復元
+              const lastNextY = localStorage.getItem('puyopuyo_next_display_y');
+              if (lastNextY) {
+                  nextDisplayYSelect.value = lastNextY;
+              }
+
+              nextDisplayYSelect.addEventListener('change', () => {
+                  const newY = parseInt(nextDisplayYSelect.value);
+                  localStorage.setItem('puyopuyo_next_display_y', newY);
+                  if (game && game.scene.isActive('MultiplayerPuyoPuyo')) {
+                      const scene = game.scene.scenes[0];
+                      scene.nextDisplayY = newY;
+                      // NEXT表示位置を即座に更新
+                      if (scene.nextContainer) {
+                          scene.nextContainer.y = newY;
+                          // NEXTテキストの位置も更新
+                          const nextText = scene.children.list.find(c => c.type === 'Text' && c.text === 'NEXT');
+                          if (nextText) {
+                              nextText.y = newY - 50;
+                          }
+                      }
+                  }
               });
           }
 
@@ -1845,6 +1969,16 @@
           btn.classList.remove('ready');
       }
 
+      function updatePlayerSettings() {
+          const multiplier = document.getElementById('myGarbageMultiplier').value;
+          if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({
+                  type: 'update_player_settings',
+                  garbageMultiplier: multiplier
+              }));
+          }
+      }
+
       function updatePlayerList(players, hostId) {
           const list = document.getElementById('playerList');
           list.innerHTML = '<h3>プレイヤー一覧</h3>';
@@ -1863,16 +1997,31 @@
               if (player.ready) item.classList.add('ready');
               if (player.id === hostId) item.classList.add('host');
 
+              const nameInfo = document.createElement('div');
+              nameInfo.style.display = 'flex';
+              nameInfo.style.flexDirection = 'column';
+
               const name = document.createElement('span');
+              name.style.fontWeight = 'bold';
               name.textContent = player.name;
               if (player.id === hostId) name.textContent += ' 👑';
               if (player.id === myPlayerId) name.textContent += ' (あなた)';
+              nameInfo.appendChild(name);
+
+              // おじゃま倍率の表示
+              const mult = document.createElement('span');
+              mult.style.fontSize = '11px';
+              mult.style.color = player.garbageMultiplier > 1.0 ? '#e74c3c' : '#666';
+              mult.style.fontWeight = player.garbageMultiplier > 1.0 ? 'bold' : 'normal';
+              mult.textContent = `受けるダメージ: x${parseFloat(player.garbageMultiplier || 1.0).toFixed(2)}`;
+              nameInfo.appendChild(mult);
 
               const status = document.createElement('span');
               status.textContent = player.ready ? '✅ 準備完了' : '⏳ 待機中';
               status.style.color = player.ready ? '#33cc33' : '#888';
+              status.style.fontSize = '13px';
 
-              item.appendChild(name);
+              item.appendChild(nameInfo);
               item.appendChild(status);
               
               // ホストのみが他のプレイヤーをキックできる
@@ -1922,18 +2071,38 @@
                this.keyHoldInterval = null; // キー長押しインターバル
                 this.swipeThreshold = 20; // スワイプしきい値のデフォルト値
                 this.swipeBoundaries = [45, 135, 225, 315]; // スワイプ角度のデフォルト値
+                this.isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+                this.touchStartY = null;
+                this.hardDropTouchStartTime = null;
+                this.hardDropPressed = false;
+                this.holdPressed = false;
+                this.keyLeft = null;
+                this.keyRight = null;
+                this.keyDown = null;
+                this.keyRotate = null;
+                this.keyRotateCCW = null;
+                this.keyHold = null;
+                this.keyHardDrop = null;
+                this.keyHoldStartTime = {};
+                this.lastMoveTime = 0;
+                this.lastRotateTime = 0;
+                this.lockDelayTimer = null;
+                this.isOnGround = false;
                 
                 // スキルシステム
-                this.skillEnabled = true;
+                this.skillType = 1; // 0: None, 1: Skill 1, 2: Skill 2
                 this.skillGauge = 0; // 現在のスキルゲージ（おじゃまぷよ消去数）
                 this.skillGaugeMax = 20; // スキル発動に必要なおじゃまぷよ数
-                this.skillGaugeContainer = null; // スキルゲージ表示用コンテナ
                 this.skillGaugeBar = null; // スキルゲージバー
                 this.skillGaugeText = null; // スキルゲージテキスト
                 this.skillEffectTimer = null; // スキル効果タイマー
                 this.skillSenderText = null; // スキル発動者表示用テキスト
                 this.totalOjamaCleared = 0; // 累計おじゃまぷよ消去数
                 this.transparentPuyos = []; // 透明おじゃまぷよのリスト
+                
+                // 誰からどれだけおじゃまが来たか
+                this.receivedGarbageTracker = new Map(); // playerId -> totalAmount
+                this.receivedGarbageTexts = new Map(); // playerId -> Phaser.Text
                 
                 // ゲージアニメーション用
                 this.garbageGaugeTargetHeight = 0;
@@ -1966,31 +2135,66 @@
               graphics.destroy();
           }
 
-          create() {
-               // 待機メッセージ
-               this.waitingText = this.add.text(
-                   this.cameras.main.centerX,
-                   this.cameras.main.centerY,
-                   'ゲーム開始を待っています...',
-                   {
-                       fontSize: '32px',
-                       fontFamily: '"JetBrains Mono"',
-                       fill: '#fff',
-                       fontStyle: 'bold'
-                   }
-               ).setOrigin(0.5);
+            create() {
+                // 待機メッセージ
+                this.waitingText = this.add.text(
+                    this.cameras.main.centerX,
+                    this.cameras.main.centerY,
+                    'ゲーム開始を待っています...',
+                    {
+                        fontSize: '32px',
+                        fontFamily: '"JetBrains Mono"',
+                        fill: '#fff',
+                        fontStyle: 'bold'
+                    }
+                ).setOrigin(0.5);
 
-                 // キーボード設定（カスタムキー設定を適用）
-                 this.setupCustomKeyBindings();
+                // キーボード設定（カスタムキー設定を適用）
+                this.setupCustomKeyBindings();
+
+                // デフォルトカーソルキーの初期化
+                this.cursors = this.input.keyboard.createCursorKeys();
 
                 // タッチ・スワイプ設定
                 this.setupTouchControls();
+
                 this.setupMobileOptimizations();
- 
+
                 this.lastMoveTime = 0;
-               this.lastRotateTime = 0;
-               this.lockDelayTimer = null;
-               this.isOnGround = false;
+                this.lastRotateTime = 0;
+                this.lockDelayTimer = null;
+                this.isOnGround = false;
+                
+                // モバイル: タッチイベントリスナーを追加
+                if (this.isMobile) {
+                    this.input.on('pointerdown', (pointer) => {
+                        if (pointer.y > window.innerHeight - 100) {
+                            this.touchStartY = pointer.y;
+                            this.hardDropPressed = false;
+                            this.holdPressed = false;
+                        }
+                    });
+
+                    this.input.on('pointerup', (pointer) => {
+                        if (this.touchStartY > window.innerHeight - 100) {
+                            const distance = pointer.y - this.touchStartY;
+                            const isQuickSwipe = distance < -this.quickSwipeThreshold;
+                            
+                            if (isQuickSwipe) {
+                                // 素早くスワイプ: 回転
+                                this.rotatePair(1);
+                            } else if (distance > 0) {
+                                // 下方向にスワイプ: ホールド
+                                this.holdPressed = true;
+                            } else if (Math.abs(distance) < 50) {
+                                // タップ: ハードドロップ
+                                this.hardDropPressed = true;
+                            }
+                            
+                            this.touchStartY = null;
+                        }
+                    });
+                }
                
                // キー長押し用の初期化
                this.keyHoldStartTime = {};
@@ -2018,6 +2222,7 @@
                 this.garbageMode = this.gameSettings.garbageMode || 'drop';
                 this.garbageAppear = this.gameSettings.garbageAppear || 'drop';
                 this.holdEnabled = this.gameSettings.holdEnabled !== undefined ? this.gameSettings.holdEnabled : true;
+                this.skillType = this.gameSettings.skillType !== undefined ? this.gameSettings.skillType : 1;
               this.zoomedPlayerId = null;
 
               // シード付き乱数初期化 (全員同じシード)
@@ -2033,23 +2238,27 @@
                // 既存の要素をクリア
                this.children.removeAll(true);
 
-               // ゲーム状態をリセット
-               this.score = 0;
-               this.gameOver = false;
-               this.isMoving = false;
-               this.isBoardAnimating = false;
-               this.chainCount = 0;
-               this.pendingGarbageCount = 0;
-               this.garbageQueue = [];
-               this.chatInputFocused = false; // チャット入力状態をリセット
-               if (this.defeatTimer) {
-                   this.defeatTimer.remove();
-                   this.defeatTimer = null;
-               }
-               if (this.defeatCountdownText) {
-                   this.defeatCountdownText.destroy(); // destroy instead of setVisible(false) for full reset
-                   this.defeatCountdownText = null; 
-               }
+                // ゲーム状態をリセット
+                this.score = 0;
+                this.gameOver = false;
+                this.isMoving = false;
+                this.isBoardAnimating = false;
+                this.chainCount = 0;
+                this.pendingGarbageCount = 0;
+                this.garbageQueue = [];
+                this.chatInputFocused = false; // チャット入力状態をリセット
+                this.touchStartY = null;
+                this.hardDropTouchStartTime = null;
+                this.hardDropPressed = false;
+                this.holdPressed = false;
+                if (this.defeatTimer) {
+                    this.defeatTimer.remove();
+                    this.defeatTimer = null;
+                }
+                if (this.defeatCountdownText) {
+                    this.defeatCountdownText.destroy(); // destroy instead of setVisible(false) for full reset
+                    this.defeatCountdownText = null; 
+                }
 
                // ログコンテナを確実に初期化（removeAllで削除されるため必ず再作成）
                this.logContainer = this.add.container(980, 650).setDepth(1000);
@@ -2122,7 +2331,7 @@
               }).setOrigin(0.5).setDepth(100);
 
                 // スキルゲージ（フィールドの左側）
-                if (this.skillEnabled) {
+                if (this.skillType !== 0) {
                     this.createSkillGauge(offsetX - 45, 0);
                 }
 
@@ -2164,7 +2373,12 @@
 
                  // Next表示 (左横、もっと下に)
                 const nextX = offsetX - 70;
-                const nextY = 200; // 80から200に変更して下に移動
+                
+                // NEXT表示位置の初期化 (個人設定から取得)
+                const nextDisplayYSelect = document.getElementById('nextDisplayY');
+                const nextY = nextDisplayYSelect ? parseInt(nextDisplayYSelect.value) : 200;
+                this.nextDisplayY = nextY;
+
                 this.add.text(nextX, nextY - 50, 'NEXT', {
                     fontSize: '18px',
                     fontFamily: '"JetBrains Mono"',
@@ -2172,7 +2386,7 @@
                     fontStyle: 'bold'
                 }).setOrigin(0.5).setDepth(100);
                 this.nextContainer = this.add.container(nextX, nextY).setDepth(100);
-               
+
                 // Nextキューの初期化 (2つ分表示するため、あらかじめ生成)
                 this.nextQueue = [this.createPuyoPair(), this.createPuyoPair()];
                 this.updateNextDisplay();
@@ -2188,6 +2402,9 @@
                 if (isHost) {
                     this.createForceEndButton();
                 }
+
+               // キーボード設定（最新の設定を適用）
+               this.setupCustomKeyBindings();
 
                // カウントダウン開始
               this.startCountdown(() => {
@@ -2390,9 +2607,8 @@
                    }
                    
                    // プレイヤー名
-                   // プレイヤー名
-                   // プレイヤー名
-                   field.name = this.add.text(centerX, opponentY - 25 - CELL_SIZE, opponents[0].name, {
+                   const displayName = opponents[0].garbageMultiplier > 1.0 ? `${opponents[0].name} (x${parseFloat(opponents[0].garbageMultiplier).toFixed(2)})` : opponents[0].name;
+                   field.name = this.add.text(centerX, opponentY - 25 - CELL_SIZE, displayName, {
                        fontSize: '20px',
                        fontFamily: '"JetBrains Mono"',
                        fill: '#333',
@@ -2498,7 +2714,8 @@
                       field.border.setStrokeStyle(2, 0x95a5a6);
     
                        // プレイヤー名
-                       field.name = this.add.text(x + fieldWidth / 2, y - 15, player.name, {
+                       const displayName = player.garbageMultiplier > 1.0 ? `${player.name} (x${parseFloat(player.garbageMultiplier).toFixed(2)})` : player.name;
+                       field.name = this.add.text(x + fieldWidth / 2, y - 15, displayName, {
                            fontSize: '12px',
                            fontFamily: '"JetBrains Mono"',
                            fill: '#333',
@@ -2668,8 +2885,10 @@
                     const mainColor = this.holdPair.main.color;
                     const subColor = this.holdPair.sub.color;
                     
-                    const mainPuyo = this.add.circle(0, -CELL_SIZE * 0.4, CELL_SIZE * 0.3, COLOR_VALUES[mainColor]);
-                    const subPuyo = this.add.circle(0, CELL_SIZE * 0.4, CELL_SIZE * 0.3, COLOR_VALUES[subColor]);
+                    // メイン（下）
+                    const mainPuyo = this.add.circle(0, CELL_SIZE * 0.4, CELL_SIZE * 0.3, COLOR_VALUES[mainColor]);
+                    // サブ（上）- currentPairと同じ配置
+                    const subPuyo = this.add.circle(0, -CELL_SIZE * 0.4, CELL_SIZE * 0.3, COLOR_VALUES[subColor]);
                     
                     mainPuyo.setStrokeStyle(2, 0xffffff);
                     subPuyo.setStrokeStyle(2, 0xffffff);
@@ -2706,8 +2925,8 @@
                         main: { color: holdMainColor, sprite: null },
                         sub: { color: holdSubColor, sprite: null },
                         col: 2,
-                        row: 1,
-                        rotation: 0,
+                        row: 0,
+                        rotation: 2,
                         ghostMain: null,
                         ghostSub: null
                     };
@@ -2735,11 +2954,22 @@
                 }
                 
                 // 新しいぷよを表示
-                const startX = this.fieldOffsetX + this.currentPair.col * CELL_SIZE + CELL_SIZE / 2;
-                const startY = this.currentPair.row * CELL_SIZE + CELL_SIZE / 2;
-                
-                this.currentPair.main.sprite = this.createPuyo(startX, startY, this.currentPair.main.color);
-                this.currentPair.sub.sprite = this.createPuyo(startX, startY - CELL_SIZE, this.currentPair.sub.color);
+              const startX = this.fieldOffsetX + this.currentPair.col * CELL_SIZE + CELL_SIZE / 2;
+              const startY = this.currentPair.row * CELL_SIZE + CELL_SIZE / 2;
+              
+              // Get positions based on rotation
+              const positions = this.getPairPositions(this.currentPair.col, this.currentPair.row, this.currentPair.rotation);
+
+              this.currentPair.main.sprite = this.createPuyo(
+                  this.fieldOffsetX + positions.main.col * CELL_SIZE + CELL_SIZE / 2,
+                  positions.main.row * CELL_SIZE + CELL_SIZE / 2,
+                  this.currentPair.main.color
+              );
+              this.currentPair.sub.sprite = this.createPuyo(
+                  this.fieldOffsetX + positions.sub.col * CELL_SIZE + CELL_SIZE / 2,
+                  positions.sub.row * CELL_SIZE + CELL_SIZE / 2,
+                  this.currentPair.sub.color
+              );
                 
                 this.updateGhostPieces();
                 this.updateHoldDisplay();
@@ -3056,6 +3286,23 @@
 
             // カスタムキー設定を適用
             setupCustomKeyBindings() {
+                // 既存のカスタムキーをすべて破棄
+                if (this.keyLeft) this.keyLeft.forEach(k => k.destroy());
+                if (this.keyRight) this.keyRight.forEach(k => k.destroy());
+                if (this.keyDown) this.keyDown.forEach(k => k.destroy());
+                if (this.keyRotate) this.keyRotate.forEach(k => k.destroy());
+                if (this.keyRotateCCW) this.keyRotateCCW.forEach(k => k.destroy());
+                if (this.keyHold) this.keyHold.forEach(k => k.destroy());
+                if (this.keyHardDrop) this.keyHardDrop.forEach(k => k.destroy());
+                
+                // 既存のcursorsを破棄
+                if (this.cursors) {
+                    this.cursors.left.destroy();
+                    this.cursors.right.destroy();
+                    this.cursors.up.destroy();
+                    this.cursors.down.destroy();
+                }
+
                 // キー設定を読み込み
                 loadKeySettings();
                 
@@ -3301,45 +3548,70 @@
           }
 
            updateNextDisplay() {
-               if (!this.nextContainer) return;
-               this.nextContainer.removeAll(true);
- 
-               this.nextQueue.forEach((pair, index) => {
-                   const spacing = 80;
-                   const yOffset = index * spacing;
-                   const scale = index === 0 ? 0.8 : 0.6; // 1つ目は大きく、2つ目は小さく
-                   const alpha = index === 0 ? 1 : 0.7;
+                if (!this.nextContainer) return;
+                this.nextContainer.removeAll(true);
 
-                   // メイン
-                   const main = this.createSmallPuyo(0, yOffset, pair.main, scale);
-                   main.setAlpha(alpha);
-                   this.nextContainer.add(main);
- 
-                   // サブ
-                   const sub = this.createSmallPuyo(0, yOffset + CELL_SIZE * scale, pair.sub, scale);
-                   sub.setAlpha(alpha);
-                   this.nextContainer.add(sub);
-               });
-           }
-           update(time) {
-               // チャット入力中は操作を無効化
-               if (this.chatInputFocused) return;
+                this.nextQueue.forEach((pair, index) => {
+                    const spacing = 110; // Increased from 80
+                    const yOffset = index * spacing;
+                    const scale = index === 0 ? 0.8 : 0.45; // Smaller for subsequent pairs
+                    const alpha = index === 0 ? 1 : 0.6;
+
+                    // メイン（下）- 180°回転
+                    const main = this.createSmallPuyo(0, yOffset + CELL_SIZE * scale, pair.main, scale);
+                    main.setAlpha(alpha);
+                    main.setAngle(180);
+                    this.nextContainer.add(main);
+
+                    // サブ（上）- 180°回転
+                    const sub = this.createSmallPuyo(0, yOffset, pair.sub, scale);
+                    sub.setAlpha(alpha);
+                    sub.setAngle(180);
+                    this.nextContainer.add(sub);
+                });
+            }
+
+            update(time) {
+               // 安全のため、isMovingが長い間trueの場合はリセット
+               if (this.isMoving && this.time && this.time.now) {
+                   if (!this.isMovingTimestamp || this.time.now - this.isMovingTimestamp > 1000) {
+                       console.log('isMoving auto-reset in update (timeout)');
+                       this.isMoving = false;
+                       this.isMovingTimestamp = null;
+                   }
+               }
                
-               // アニメーション中でも次のぷよが出ている場合は操作可能（isMoving制限を緩和）
-               if (this.gameOver || !this.currentPair || !this.gameStarted) return;
+               // チャット入力中は操作を無効化
+               if (this.chatInputFocused) {
+                   // フォーカスが外れたことを確認してリセット
+                   const chatInput = document.getElementById('chatInput');
+                   if (chatInput && document.activeElement !== chatInput) {
+                       this.chatInputFocused = false;
+                       console.log('chatInputFocused auto-reset');
+                   } else {
+                       console.log('Update skipped: chatInputFocused = true');
+                       return;
+                   }
+               }
+               
+               // アニメーション中也次のぷよが出ている場合は操作可能（isMoving制限を緩和）
+               if (this.gameOver || !this.currentPair || !this.gameStarted) {
+
+                   return;
+               }
 
                // キー長押しによる高速移動処理
                const moveDelay = this.calculateMoveDelay(time);
                
                  // カスタムキーまたはデフォルトキーで判定（配列対応）
-                 const leftPressed = (this.keyLeft && this.keyLeft.some(k => k.isDown)) || this.cursors.left.isDown;
-                 const rightPressed = (this.keyRight && this.keyRight.some(k => k.isDown)) || this.cursors.right.isDown;
-                 const downPressed = (this.keyDown && this.keyDown.some(k => k.isDown)) || this.cursors.down.isDown;
-                 const rotatePressed = (this.keyRotate && this.keyRotate.some(k => Phaser.Input.Keyboard.JustDown(k))) || 
+                 const leftPressed = (this.keyLeft && this.keyLeft.length > 0 && this.keyLeft.some(k => k.isDown)) || this.cursors.left.isDown;
+                 const rightPressed = (this.keyRight && this.keyRight.length > 0 && this.keyRight.some(k => k.isDown)) || this.cursors.right.isDown;
+                 const downPressed = (this.keyDown && this.keyDown.length > 0 && this.keyDown.some(k => k.isDown)) || this.cursors.down.isDown;
+                 const rotatePressed = (this.keyRotate && this.keyRotate.length > 0 && this.keyRotate.some(k => Phaser.Input.Keyboard.JustDown(k))) || 
                                        Phaser.Input.Keyboard.JustDown(this.cursors.up);
-                 const hardDropPressed = this.keyHardDrop && this.keyHardDrop.some(k => Phaser.Input.Keyboard.JustDown(k));
+                 const hardDropPressed = (this.keyHardDrop && this.keyHardDrop.length > 0 && this.keyHardDrop.some(k => Phaser.Input.Keyboard.JustDown(k)));
                 
-                if (leftPressed && time > this.lastMoveTime + moveDelay) {
+                 if (leftPressed && time > this.lastMoveTime + moveDelay) {
                     this.movePair(-1);
                     this.lastMoveTime = time;
                 } else if (rightPressed && time > this.lastMoveTime + moveDelay) {
@@ -3353,21 +3625,53 @@
                  }
 
                  // 逆回転
-                 const rotateCCWPressed = this.keyRotateCCW && this.keyRotateCCW.some(k => Phaser.Input.Keyboard.JustDown(k));
+                 const rotateCCWPressed = (this.keyRotateCCW && this.keyRotateCCW.length > 0 && this.keyRotateCCW.some(k => Phaser.Input.Keyboard.JustDown(k)));
                  if (rotateCCWPressed && time > this.lastRotateTime + 50) {
                      this.rotatePair(-1);
                      this.lastRotateTime = time;
                  }
 
                  // ホールド
-                 const holdPressed = this.keyHold && this.keyHold.some(k => Phaser.Input.Keyboard.JustDown(k));
-                 if (holdPressed && this.holdEnabled) {
-                     this.hold();
-                 }
- 
-                 if (hardDropPressed) {
-                     this.hardDrop();
-                 }
+                 const holdPressed = (this.keyHold && this.keyHold.length > 0 && this.keyHold.some(k => Phaser.Input.Keyboard.JustDown(k)));
+              if (holdPressed && this.holdEnabled) {
+                  this.hold();
+              }
+
+              if (hardDropPressed) {
+                  this.hardDrop();
+              }
+
+              // モバイル: 画面下部を長押しでハードドロップ
+              if (this.isMobile && this.touchStartY > window.innerHeight - 100) {
+                  const now = this.time.now;
+                  if (!this.hardDropTouchStartTime) {
+                      this.hardDropTouchStartTime = now;
+                  } else if (now - this.hardDropTouchStartTime > 300) {
+                      this.hardDrop();
+                      this.hardDropTouchStartTime = null;
+                  }
+              } else {
+                  this.hardDropTouchStartTime = null;
+              }
+
+              // モバイル: タッチ入力のリセット
+              if (this.isMobile && this.touchStartY > window.innerHeight - 100) {
+                  this.hardDropPressed = false;
+                  this.holdPressed = false;
+              }
+
+              // モバイル: 画面下部を長押しでハードドロップ
+              if (this.isMobile && this.touchStartY > window.innerHeight - 100) {
+                  const now = this.time.now;
+                  if (!this.hardDropTouchStartTime) {
+                      this.hardDropTouchStartTime = now;
+                  } else if (now - this.hardDropTouchStartTime > 300) {
+                      this.hardDrop();
+                      this.hardDropTouchStartTime = null;
+                  }
+              } else {
+                  this.hardDropTouchStartTime = null;
+              }
 
                 // 敗北タイマー更新
                 if (this.defeatTimer) {
@@ -3386,35 +3690,35 @@
                  this.checkTransparentPuyoReveal();
              }
            
-            // キー長押し時間に応じた移動遅延を計算
-            calculateMoveDelay(currentTime) {
-                const baseDelay = 150;
-                const fastDelay = 50;
-                const holdThreshold = 300; // 300ms以上長押しで高速化
+             // キー長押し時間に応じた移動遅延を計算
+             calculateMoveDelay(currentTime) {
+                 const baseDelay = 150;
+                 const fastDelay = 50;
+                 const holdThreshold = 300; // 300ms以上長押しで高速化
+                 
+                 // カスタムキーまたはデフォルトキーで判定
+                 const leftHeld = (this.keyLeft && this.keyLeft.length > 0 && this.keyLeft.some(k => k.isDown)) || this.cursors.left.isDown;
+                 const rightHeld = (this.keyRight && this.keyRight.length > 0 && this.keyRight.some(k => k.isDown)) || this.cursors.right.isDown;
+                 
+                 if (!leftHeld && !rightHeld) {
+                     this.keyHoldStartTime = {};
+                     return baseDelay;
+                 }
+                 
+                 const direction = leftHeld ? 'left' : 'right';
                 
-                // カスタムキーまたはデフォルトキーで判定
-                const leftHeld = (this.keyLeft && this.keyLeft.isDown) || this.cursors.left.isDown;
-                const rightHeld = (this.keyRight && this.keyRight.isDown) || this.cursors.right.isDown;
-                
-                if (!leftHeld && !rightHeld) {
-                    this.keyHoldStartTime = {};
-                    return baseDelay;
+                if (!this.keyHoldStartTime[direction]) {
+                    this.keyHoldStartTime[direction] = currentTime;
                 }
                 
-                const direction = leftHeld ? 'left' : 'right';
-               
-               if (!this.keyHoldStartTime[direction]) {
-                   this.keyHoldStartTime[direction] = currentTime;
-               }
-               
-               const holdDuration = currentTime - this.keyHoldStartTime[direction];
-               
-               if (holdDuration > holdThreshold) {
-                   return fastDelay;
-               }
-               
-               return baseDelay;
-           }
+                const holdDuration = currentTime - this.keyHoldStartTime[direction];
+                
+                if (holdDuration > holdThreshold) {
+                    return fastDelay;
+                }
+                
+                return baseDelay;
+            }
 
           movePair(dir) {
               const newCol = this.currentPair.col + dir;
@@ -3426,10 +3730,33 @@
                   this.updateGhostPieces();
                   this.resetLockDelay();
                   this.sendPieceUpdate();
+                  
+                  // 接地チェック: 移動後も接地しているならタイマーを再開
+                  const nextRow = this.currentPair.row + 1;
+                  const nextPositions = this.getPairPositions(this.currentPair.col, nextRow, this.currentPair.rotation);
+                  if (!this.isValidPosition(nextPositions)) {
+                      this.isOnGround = true;
+                      this.lockDelayTimer = this.time.delayedCall(500, () => {
+                          this.lockPair();
+                      });
+                  }
               }
           }
 
           rotatePair(direction = 1) {
+              // Check if there are puyos or walls on both sides - rotate 180 degrees
+              const leftCol = this.currentPair.col - 1;
+              const rightCol = this.currentPair.col + 1;
+              const row = this.currentPair.row;
+              
+              let isLeftBlocked = leftCol < 0 || (row >= 0 && row < ROWS && this.grid[row][leftCol] !== null);
+              let isRightBlocked = rightCol >= COLS || (row >= 0 && row < ROWS && this.grid[row][rightCol] !== null);
+              
+              // If blocked on both sides, rotate 180 degrees
+              if (isLeftBlocked && isRightBlocked) {
+                  direction = 2;
+              }
+              
               const newRotation = (this.currentPair.rotation + direction + 4) % 4;
               const positions = this.getPairPositions(this.currentPair.col, this.currentPair.row, newRotation);
 
@@ -3453,6 +3780,16 @@
                       duration: 200,
                       ease: 'Back.easeOut'
                   });
+
+                  // 接地チェック: 回転後も接地しているならタイマーを再開
+                  const nextRow = this.currentPair.row + 1;
+                  const nextPositions = this.getPairPositions(this.currentPair.col, nextRow, this.currentPair.rotation);
+                  if (!this.isValidPosition(nextPositions)) {
+                      this.isOnGround = true;
+                      this.lockDelayTimer = this.time.delayedCall(500, () => {
+                          this.lockPair();
+                      });
+                  }
               }
           }
 
@@ -3465,12 +3802,35 @@
           }
 
           hardDrop() {
-              if (!this.currentPair || this.isMoving) return;
+                // 安全のため、isMovingが長い間trueの場合はリセット
+                if (this.isMoving && this.time && this.time.now) {
+                    // isMovingが500ms以上trueの場合はリセット（ハング対策）
+                    if (!this.isMovingTimestamp || this.time.now - this.isMovingTimestamp > 200) {
+                        console.log('isMoving auto-reset (timeout)');
+                        this.isMoving = false;
+                        this.isMovingTimestamp = null;
+                    } else {
+                        this.isMovingTimestamp = this.time.now;
+                    }
+                }
+                
+                if (!this.currentPair) {
+                    console.log('hardDrop skipped: no currentPair');
+                    return;
+                }
+                if (this.isMoving) {
+                    console.log('hardDrop skipped: isMoving = true');
+                    return;
+                }
+                
+                this.isMoving = true;
+                this.isMovingTimestamp = this.time.now;
 
               let dropRow = this.currentPair.row;
+              let positions;
               while (true) {
                   const testRow = dropRow + 1;
-                  const positions = this.getPairPositions(this.currentPair.col, testRow, this.currentPair.rotation);
+                  positions = this.getPairPositions(this.currentPair.col, testRow, this.currentPair.rotation);
                   if (!this.isValidPosition(positions)) break;
                   dropRow = testRow;
               }
@@ -3478,9 +3838,9 @@
               const distance = dropRow - this.currentPair.row;
               if (distance > 0) {
                    if (this.disableAnimations) {
-                       // アニメーション無効: 即座に移動
+                       // 動画無效: 即時に移動
                        this.currentPair.row = dropRow;
-                       const positions = this.getPairPositions(this.currentPair.col, dropRow, this.currentPair.rotation);
+                       positions = this.getPairPositions(this.currentPair.col, dropRow, this.currentPair.rotation);
                        this.currentPair.main.sprite.setPosition(
                            this.fieldOffsetX + positions.main.col * CELL_SIZE + CELL_SIZE / 2,
                            positions.main.row * CELL_SIZE + CELL_SIZE / 2
@@ -3494,35 +3854,55 @@
                        
                        // 必要であればサーバーへ通知（アニメーションパケットは不要だが、同期のため送るなら座標更新など）
                    } else {
-                       // メインぷよのトレイル
+                       // メインぷよのトレイル (ぼやけた残像)
                        const startY = this.currentPair.row * CELL_SIZE + CELL_SIZE / 2;
                        const endY = dropRow * CELL_SIZE + CELL_SIZE / 2;
                        const mainX = this.fieldOffsetX + this.currentPair.col * CELL_SIZE + CELL_SIZE / 2;
-                       for (let i = 0; i < 5; i++) {
-                           const trail = this.add.circle(
-                               mainX,
-                               startY + (endY - startY) * (i / 5),
-                               CELL_SIZE * 0.3,
-                               COLOR_VALUES[this.currentPair.main.color],
-                               0.3 - i * 0.05
-                           );
-                           trail.setDepth(50);
-                           this.tweens.add({
-                               targets: trail,
-                               alpha: 0,
-                               duration: 200,
-                               delay: i * 20,
-                               onComplete: () => trail.destroy()
-                           });
-                       }
-                       
-                       this.currentPair.row = dropRow;
+                       const subX = this.fieldOffsetX + positions.sub.col * CELL_SIZE + CELL_SIZE / 2;
+                       const subStartY = positions.sub.row * CELL_SIZE + CELL_SIZE / 2 - (dropRow - this.currentPair.row) * CELL_SIZE;
+                       const subEndY = positions.sub.row * CELL_SIZE + CELL_SIZE / 2;
 
-                       const positions = this.getPairPositions(
-                           this.currentPair.col,
-                           dropRow,
-                           this.currentPair.rotation
-                       );
+                        const createBlurTrail = (x, start, end, color) => {
+                            const height = Math.abs(end - start);
+                            // 縦長のぼかし効果
+                            const blurWidth = CELL_SIZE * 0.7;
+                            const blurHeight = height + CELL_SIZE * 0.5;
+                            const blur = this.add.ellipse(x, (start + end) / 2, blurWidth, blurHeight, COLOR_VALUES[color], 0.15);
+                            blur.setDepth(45);
+                            this.tweens.add({
+                                targets: blur,
+                                alpha: 0,
+                                scaleX: 0.3,
+                                scaleY: 0.1,
+                                duration: 250,
+                                ease: 'Power2',
+                                onComplete: () => blur.destroy()
+                            });
+
+                            // 移動軌跡の円形残像
+                            for (let i = 0; i < 5; i++) {
+                                const afterImage = this.add.circle(x, start + (end - start) * (i / 5), CELL_SIZE * 0.4, COLOR_VALUES[color], 0.2 - (i * 0.03));
+                                afterImage.setDepth(46);
+                                this.tweens.add({
+                                    targets: afterImage,
+                                    alpha: 0,
+                                    y: end,
+                                    duration: 150 + i * 30,
+                                    ease: 'Power2',
+                                    onComplete: () => afterImage.destroy()
+                                });
+                            }
+                        };
+
+                        createBlurTrail(mainX, startY, endY, this.currentPair.main.color);
+                        createBlurTrail(subX, subStartY, subEndY, this.currentPair.sub.color);                       
+                        this.currentPair.row = dropRow;
+
+                        positions = this.getPairPositions(
+                            this.currentPair.col,
+                            dropRow,
+                            this.currentPair.rotation
+                        );
 
                        this.tweens.add({
                            targets: this.currentPair.main.sprite,
@@ -3637,6 +4017,18 @@
                   this.updateGhostPieces();
                   this.resetLockDelay();
                   this.sendPieceUpdate();
+                  
+                  // 接地チェック: 次の移動が不可能なら即座にロックタイマーを開始
+                  const nextRow = newRow + 1;
+                  const nextPositions = this.getPairPositions(this.currentPair.col, nextRow, this.currentPair.rotation);
+                  if (!this.isValidPosition(nextPositions)) {
+                      if (!this.isOnGround) {
+                          this.isOnGround = true;
+                          this.lockDelayTimer = this.time.delayedCall(500, () => {
+                              this.lockPair();
+                          });
+                      }
+                  }
               } else {
                   if (!this.isOnGround) {
                       this.isOnGround = true;
@@ -3665,27 +4057,35 @@
                    this.currentPair.ghostSub = null;
                }
 
-               const positions = this.getPairPositions(
-                   this.currentPair.col,
-                   this.currentPair.row,
-                   this.currentPair.rotation
-               );
+                const positions = this.getPairPositions(
+                    this.currentPair.col,
+                    this.currentPair.row,
+                    this.currentPair.rotation
+                );
 
-               // 最終チェック: 設置位置が有効か？（おじゃまぷよ落下などで埋まっていないか）
-               if (!this.isValidPosition(positions) && positions.main.row >= 0) {
-                   // 無効なら1つ上にずらしてみる
-                   const upPositions = this.getPairPositions(this.currentPair.col, this.currentPair.row - 1, this.currentPair.rotation);
-                   if (this.isValidPosition(upPositions)) {
+                // 最終チェック: 設置位置が有効か？（おじゃまぷよ落下などで埋まっていないか）
+                // 両方の位置がinvalidな場合のみゲームオーバー（一つだけなら上に移動）
+                const mainValid = positions.main.row >= 0 && positions.main.row < ROWS && 
+                                  (positions.main.row < 0 || this.grid[positions.main.row][positions.main.col] === null);
+                const subValid = positions.sub.row >= 0 && positions.sub.row < ROWS && 
+                                 (positions.sub.row < 0 || this.grid[positions.sub.row][positions.sub.col] === null);
+                
+                if (!mainValid && !subValid) {
+                    // 両方invalidなら上にずら试试す
+                    const upPositions = this.getPairPositions(this.currentPair.col, this.currentPair.row - 1, this.currentPair.rotation);
+                    const upMainValid = upPositions.main.row >= 0 && upPositions.main.row < ROWS && 
+                                       (upPositions.main.row < 0 || this.grid[upPositions.main.row][upPositions.main.col] === null);
+                    const upSubValid = upPositions.sub.row >= 0 && upPositions.sub.row < ROWS && 
+                                      (upPositions.sub.row < 0 || this.grid[upPositions.sub.row][upPositions.sub.col] === null);
+                    
+                    if (upMainValid || upSubValid) {
                         this.currentPair.row--;
-                        // 位置再計算
-                        positions.main = upPositions.main;
-                        positions.sub = upPositions.sub;
-                   } else {
-                       // それでもダメならゲームオーバー
-                       this.endGame();
-                       return;
-                   }
-               }
+                    } else {
+                        // それでもダメならゲームオーバー
+                        this.endGame();
+                        return;
+                    }
+                }
 
                  if (positions.main.row >= 0) {
                      this.grid[positions.main.row][positions.main.col] = this.currentPair.main.sprite;
@@ -3894,10 +4294,17 @@
                               }
                           }
 
-                          // 余った分を相手に送る
-                          if (remainingOffset > 0) {
-                              this.sendGarbage(remainingOffset, positions);
-                          }
+                      // 余った分を相手に送る
+                      if (remainingOffset > 0) {
+                          // 全ての消去位置を収集
+                          const clearPositions = matched.map(m => ({
+                              row: m.row,
+                              col: m.col,
+                              x: this.fieldOffsetX + m.col * CELL_SIZE + CELL_SIZE / 2,
+                              y: m.row * CELL_SIZE + CELL_SIZE / 2
+                          }));
+                          this.sendGarbage(remainingOffset, clearPositions);
+                      }
                           
                           // 予告ゲージ更新
                           this.updateGarbageGauge();
@@ -4262,8 +4669,7 @@
             }
 
             updateSkillGauge() {
-                if (!this.skillEnabled) {
-                    console.log('[Skill] Update skipped: skillEnabled is false');
+                if (this.skillType === 0) {
                     return;
                 }
                 if (!this.skillGaugeBar) {
@@ -4318,29 +4724,37 @@
             }
 
             addSkillOjamaCount(count) {
-                if (!this.skillEnabled) {
-                    this.showDebugInfo('Skill disabled');
-                    return;
-                }
+                if (this.skillType === 0) return;
                 
-                // skillGaugeMaxのデフォルト値を設定
                 const max = this.skillGaugeMax || 20;
-                
-                // 溢れた場合は複数回発動できるように
                 this.skillGauge = (this.skillGauge || 0) + count;
                 this.totalOjamaCleared += count;
                 
-                this.showDebugInfo(`+${count} Ojama: ${this.skillGauge}/${max}`);
-                
                 // 最大値を超えた回数だけスキル発動（溢れた分は次のゲージに繰り越し）
                 while (this.skillGauge >= max) {
-                    this.showDebugInfo('SKILL ACTIVATED!');
                     this.activateSkill();
-                    // ゲージをリセットして余った分を保持
                     this.skillGauge -= max;
                 }
                 
                 this.updateSkillGauge();
+            }
+
+            activateSkill() {
+                if (this.skillType === 0 || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+                if (this.skillType === 1) {
+                    // スキル1発動をサーバーに通知
+                    ws.send(JSON.stringify({
+                        type: 'skill_activated'
+                    }));
+                    this.showSkillActivationEffect();
+                } else if (this.skillType === 2) {
+                    // スキル2発動
+                    ws.send(JSON.stringify({
+                        type: 'skill2_activated'
+                    }));
+                    this.showSkill2ActivationEffect();
+                }
             }
 
             showDebugInfo(text) {
@@ -4367,19 +4781,30 @@
                 });
             }
 
-            activateSkill() {
-                if (!this.skillEnabled || !ws || ws.readyState !== WebSocket.OPEN) return;
+            showSkill2ActivationEffect() {
+                const skillText = this.add.text(
+                    this.cameras.main.centerX,
+                    this.cameras.main.centerY,
+                    'SKILL2 ACTIVATED!',
+                    {
+                        fontSize: '48px',
+                        fontFamily: '"JetBrains Mono"',
+                        fill: '#e74c3c',
+                        fontStyle: 'bold',
+                        stroke: '#ffffff',
+                        strokeThickness: 6
+                    }
+                ).setOrigin(0.5).setDepth(2000);
 
-                // スキル発動をサーバーに通知（透明おじゃまぷよを送信）
-                ws.send(JSON.stringify({
-                    type: 'skill_activated'
-                }));
-
-                // ゲージのリセットは addSkillOjamaCount で行う
-
-               // 発動エフェクト
-               this.showSkillActivationEffect();
-           }
+                this.tweens.add({
+                    targets: skillText,
+                    scale: { from: 0.5, to: 1.5 },
+                    alpha: { from: 1, to: 0 },
+                    duration: 1500,
+                    ease: 'Power2',
+                    onComplete: () => skillText.destroy()
+                });
+            }
 
            showSkillActivationEffect() {
                // 画面中央にスキル発動表示
@@ -4416,6 +4841,48 @@
 
                 // スキル発動者名を表示
                 this.showSkillSender(fromPlayerName);
+            }
+
+            applySkill2ToNext() {
+                // NEXTの最初のおじゃまぷよに変更
+                if (this.nextQueue && this.nextQueue.length > 0) {
+                    // おじゃまぷよ（グレー）に変更
+                    this.nextQueue[0].main = 'gray';
+                    this.nextQueue[0].sub = 'gray';
+                    
+                    // 表示を更新
+                    this.updateNextDisplay();
+                    
+                    // 破裂アニメーション
+                    this.showSkill2BurstEffect();
+                }
+            }
+
+            showSkill2BurstEffect() {
+                // NEXT領域に破裂アニメーション
+                const nextX = this.fieldOffsetX - 70;
+                const nextY = 200;
+                
+                for (let i = 0; i < 8; i++) {
+                    const angle = (i / 8) * Math.PI * 2;
+                    const burst = this.add.circle(
+                        nextX,
+                        nextY,
+                        10,
+                        0x888888
+                    );
+                    
+                    this.tweens.add({
+                        targets: burst,
+                        x: nextX + Math.cos(angle) * 50,
+                        y: nextY + Math.sin(angle) * 50,
+                        alpha: 0,
+                        scale: 2,
+                        duration: 500,
+                        ease: 'Power2',
+                        onComplete: () => burst.destroy()
+                    });
+                }
             }
 
             addTransparentPuyos(count) {
@@ -4718,6 +5185,11 @@
                const sourceField = this.opponentFields.get(fromPlayerId);
                if (!sourceField) return;
 
+               // 誰からどれだけ送られたか記録
+               const currentTotal = this.receivedGarbageTracker.get(fromPlayerId) || 0;
+               this.receivedGarbageTracker.set(fromPlayerId, currentTotal + amount);
+               this.updateGarbageReceivedDisplay(fromPlayerId);
+
                // おじゃまぷよをキューに追加 (設定されたラグ秒後に有効化)
                const delaySeconds = (this.gameSettings && this.gameSettings.garbageDelay !== undefined) ? this.gameSettings.garbageDelay : 3;
                this.garbageQueue.push({
@@ -4733,10 +5205,13 @@
                this.addGarbageLog(`${amount} ←`, 'red', senderName);
 
               // 攻撃元から自分のフィールドへ飛んでくるアニメーション
-              sourcePositions.slice(0, amount).forEach((pos, i) => {
+              const posArray = sourcePositions && sourcePositions.length > 0 ? sourcePositions : [{row: 0, col: 0}];
+
+              for (let i = 0; i < amount; i++) {
+                  const pos = posArray[i % posArray.length];
                   // 相手フィールドのスケール調整された位置から飛ばす
-                  const sourceX = sourceField.x + sourceField.width / 2;
-                  const sourceY = sourceField.y + sourceField.height / 2;
+                  const sourceX = sourceField.x + (pos.col * CELL_SIZE * sourceField.scale) + (CELL_SIZE * sourceField.scale / 2);
+                  const sourceY = sourceField.y + (pos.row * CELL_SIZE * sourceField.scale) + (CELL_SIZE * sourceField.scale / 2);
 
                   const particle = this.add.circle(sourceX, sourceY, CELL_SIZE * 0.25, 0x888888, 0.9);
                   particle.setDepth(200);
@@ -4752,13 +5227,32 @@
                       scale: 0.8,
                       alpha: 0.6,
                       duration: 600,
-                      delay: i * 50,
+                      delay: i * 30,
                       ease: 'Power2',
                       onComplete: () => {
                           particle.destroy();
                       }
                   });
-              });
+              }
+          }
+
+          updateGarbageReceivedDisplay(playerId) {
+              const field = this.opponentFields.get(playerId);
+              if (!field) return;
+
+              const total = this.receivedGarbageTracker.get(playerId) || 0;
+              if (total <= 0) return;
+
+              if (!this.receivedGarbageTexts.has(playerId)) {
+                  const text = this.add.text(field.x + field.width / 2, field.y + field.height + 15, `Received: ${total}`, {
+                      fontSize: '14px',
+                      fill: '#e74c3c',
+                      fontStyle: 'bold'
+                  }).setOrigin(0.5).setDepth(100);
+                  this.receivedGarbageTexts.set(playerId, text);
+              } else {
+                  this.receivedGarbageTexts.get(playerId).setText(`Received: ${total}`);
+              }
           }
 
           showThirdPartyAttack(fromPlayerId, toPlayerId, amount, sourcePositions) {
@@ -4766,10 +5260,13 @@
               const toField = this.opponentFields.get(toPlayerId);
               
               if (!fromField || !toField) return;
+
+              const posArray = sourcePositions && sourcePositions.length > 0 ? sourcePositions : [{row: 0, col: 0}];
               
-              sourcePositions.slice(0, Math.min(amount, 10)).forEach((pos, i) => {
-                  const sourceX = fromField.x + fromField.width / 2;
-                  const sourceY = fromField.y + fromField.height / 2;
+              for (let i = 0; i < Math.min(amount, 15); i++) {
+                  const pos = posArray[i % posArray.length];
+                  const sourceX = fromField.x + (pos.col * CELL_SIZE * fromField.scale) + (CELL_SIZE * fromField.scale / 2);
+                  const sourceY = fromField.y + (pos.row * CELL_SIZE * fromField.scale) + (CELL_SIZE * fromField.scale / 2);
                   
                   const targetX = toField.x + toField.width / 2;
                   const targetY = toField.y + toField.height / 2;
@@ -4788,36 +5285,42 @@
                       ease: 'Power2',
                       onComplete: () => particle.destroy()
                   });
-              });
+              }
           }
           
           showOpponentHardDrop(playerId, data) {
               const field = this.opponentFields.get(playerId);
               if (!field) return;
-              
+
               const startY = field.y + data.startRow * CELL_SIZE * field.scale + (CELL_SIZE * field.scale) / 2;
               const endY = field.y + data.endRow * CELL_SIZE * field.scale + (CELL_SIZE * field.scale) / 2;
               const x = field.x + data.col * CELL_SIZE * field.scale + (CELL_SIZE * field.scale) / 2;
-              
-              for (let i = 0; i < 5; i++) {
-                  const trail = this.add.circle(
-                      x,
-                      startY + (endY - startY) * (i / 5),
-                      CELL_SIZE * 0.3 * field.scale,
-                      COLOR_VALUES[data.color],
-                      0.3 - i * 0.05
-                  );
-                  trail.setDepth(field.bg.depth + 50);
+
+              const height = Math.abs(endY - startY);
+              const blur = this.add.rectangle(x, (startY + endY) / 2, CELL_SIZE * 0.7 * field.scale, height, COLOR_VALUES[data.color], 0.2);
+              blur.setDepth(field.bg.depth + 45);
+              this.tweens.add({
+                  targets: blur,
+                  alpha: 0,
+                  scaleX: 0.1,
+                  duration: 300,
+                  ease: 'Power2',
+                  onComplete: () => blur.destroy()
+              });
+
+              // 重なる残像
+              for (let i = 0; i < 3; i++) {
+                  const afterImage = this.add.rectangle(x, startY + (endY - startY) * (i / 3), CELL_SIZE * 0.8 * field.scale, CELL_SIZE * field.scale, COLOR_VALUES[data.color], 0.15);
+                  afterImage.setDepth(field.bg.depth + 46);
                   this.tweens.add({
-                      targets: trail,
+                      targets: afterImage,
                       alpha: 0,
-                      duration: 200,
-                      delay: i * 20,
-                      onComplete: () => trail.destroy()
+                      scaleY: 0.5,
+                      duration: 200 + i * 50,
+                      onComplete: () => afterImage.destroy()
                   });
               }
-          }
-          
+          }          
           showOpponentClear(playerId, data) {
               const field = this.opponentFields.get(playerId);
               if (!field) return;
@@ -5200,6 +5703,11 @@
           }
 
           handlePlayerDefeated(playerId) {
+              // 自分の場合は何もしない（既にendGameで処理済み）
+              if (playerId === myPlayerId) {
+                  return;
+              }
+              
               // 敗北したプレイヤーのフィールドを崩壊させる
               const field = this.opponentFields.get(playerId);
               if (!field) return;
@@ -5266,8 +5774,6 @@
                           if (!child.active) return;
                           if (child.getData && (child.getData('myField') || child.getData('myFieldBorder'))) {
                               frameElements.push(child);
-                          } else if (child.getData && child.getData('color') && !child.getData('myFieldBorder')) { 
-                              puyoElements.push(child);
                           }
                       });
 
@@ -5283,6 +5789,15 @@
                           }
                       }
 
+                      // また、現在操作中のピースも対象にする
+                      if (this.currentPair) {
+                          if (this.currentPair.main.sprite && this.currentPair.main.sprite.active) {
+                              if (!puyoElements.includes(this.currentPair.main.sprite)) puyoElements.push(this.currentPair.main.sprite);
+                          }
+                          if (this.currentPair.sub.sprite && this.currentPair.sub.sprite.active) {
+                              if (!puyoElements.includes(this.currentPair.sub.sprite)) puyoElements.push(this.currentPair.sub.sprite);
+                          }
+                      }
 
                       console.log('collapseMyField - Scattering puyos:', puyoElements.length, 'frame elements:', frameElements.length);
                       console.log('Sample puyo element:', puyoElements[0]);
@@ -5389,6 +5904,13 @@
 
           switchTo1v1Spectator() {
                console.log('Switching to 1v1 Spectator Mode');
+
+               // クライアント設定: Duel移行時に1v1画面にしない
+               if (document.getElementById('disableDuelView') && document.getElementById('disableDuelView').checked) {
+                   console.log('1v1 layout change disabled by client setting');
+                   return;
+               }
+
                // 既存のフィールド全削除
                this.opponentFields.forEach((field) => {
                    if (field.bg) field.bg.destroy();
@@ -5405,6 +5927,14 @@
                    if (field.pieceContainer) field.pieceContainer.destroy();
                });
                this.opponentFields.clear();
+
+               // 自分用フィールドオブジェクトも削除（元プレイヤーだった場合）
+               const myFieldChildren = this.children.list.slice();
+               myFieldChildren.forEach(child => {
+                   if (child.active && (child.getData('myField') || child.getData('myFieldBorder'))) {
+                       child.destroy();
+                   }
+               });
 
                // 生存プレイヤーのみで再構築 (Scale 1.0 で並べる)
                const survivors = this.players.filter(p => this.alivePlayers.includes(p.id));
@@ -5463,6 +5993,13 @@
                // 観戦者の場合は観戦者用レイアウトへ
                if (this.isSpectator) {
                    this.switchTo1v1Spectator();
+                   return;
+               }
+
+               // クライアント設定: Duel移行時に1v1画面にしない
+               if (document.getElementById('disableDuelView') && document.getElementById('disableDuelView').checked) {
+                   console.log('1v1 layout change disabled by client setting');
+                   this.is1v1Mode = true; // レイアウトは変えないがフラグは立てる
                    return;
                }
 
@@ -5700,10 +6237,11 @@
           }
 
           handleGameEnd(winnerId, isWinner, scoreboard) {
+              console.log('handleGameEnd called', { winnerId, isWinner, scoreboard });
               this.gameOver = true;
               if (this.dropTimer) this.dropTimer.remove();
               if (this.defeatTimer) this.defeatTimer.remove();
-              this.defeatCountdownText.setVisible(false);
+              if (this.defeatCountdownText) this.defeatCountdownText.setVisible(false);
 
               if (isWinner) {
                   this.showMessage('YOU WIN!');
@@ -5714,26 +6252,31 @@
               }
               
               // スコアボードを表示（ホストのみNEXTボタン付き）
+              console.log('Showing scoreboard, scoreboard:', scoreboard);
               if (scoreboard && scoreboard.length > 0) {
                   this.time.delayedCall(1500, () => {
+                      console.log('Calling showScoreboard');
                       this.showScoreboard(scoreboard, isHost);
                   });
+              } else {
+                  console.log('No scoreboard data');
               }
               
               // 自動的にロビーに戻らない（NEXTボタン待ち）
           }
           
           enterSpectatorMode(players) {
-              this.isSpectator = true;
-              this.gameStarted = true;
-              this.players = players.filter(p => !p.isSpectator);
-              this.alivePlayers = players.filter(p => p.alive).map(p => p.id);
-              
-              // 待機テキストを削除
-              if (this.waitingText) {
-                  this.waitingText.destroy();
-                  this.waitingText = null;
-              }
+               this.isSpectator = true;
+               this.gameStarted = true;
+               this.players = players.filter(p => !p.isSpectator);
+               this.alivePlayers = players.filter(p => p.alive).map(p => p.id);
+               this.chatInputFocused = false; // チャット入力状態をリセット
+               
+               // 待機テキストを削除
+               if (this.waitingText) {
+                   this.waitingText.destroy();
+                   this.waitingText = null;
+               }
               
               // 既存の要素をクリア
               this.children.removeAll(true);
@@ -5921,9 +6464,21 @@
                       }
                   ).setOrigin(0, 0.5).setDepth(2001).setAlpha(0);
                   
+                  // 送受信おじゃま数
+                  const statsText = this.add.text(
+                      this.cameras.main.centerX + 50,
+                      y,
+                      `Sent: ${player.totalGarbageSent || 0} / Recv: ${player.totalGarbageReceived || 0}`,
+                      {
+                          fontSize: '14px',
+                          fontFamily: '"JetBrains Mono"',
+                          fill: '#bdc3c7'
+                      }
+                  ).setOrigin(0, 0.5).setDepth(2001).setAlpha(0);
+
                   // スコア
                   const scoreText = this.add.text(
-                      this.cameras.main.centerX + 200,
+                      this.cameras.main.centerX + 260,
                       y,
                       `${player.score}`,
                       {
@@ -5936,7 +6491,7 @@
                   
                   // アニメーション
                   this.tweens.add({
-                      targets: [rankText, nameText, scoreText],
+                      targets: [rankText, nameText, statsText, scoreText],
                       alpha: 1,
                       x: '+=20',
                       duration: 400,
@@ -6038,35 +6593,36 @@
           }
 
            resetGame() {
-               // タイマーをクリア
-               if (this.dropTimer) {
-                   this.dropTimer.remove();
-                   this.dropTimer = null;
-               }
-               if (this.defeatTimer) {
-                   this.defeatTimer.remove();
-                   this.defeatTimer = null;
-               }
-               if (this.lockDelayTimer) {
-                   this.lockDelayTimer.remove();
-                   this.lockDelayTimer = null;
-               }
-               
-               this.gameStarted = false;
-               this.score = 0;
-               this.gameOver = false;
-               this.isMoving = false;
-               this.isBoardAnimating = false;
-               this.chainCount = 0;
-               this.comboCount = 0;
-               this.pendingGarbageCount = 0;
-               this.garbageQueue = [];
-               this.currentPair = null;
-               this.nextPair = null;
-               this.players = [];
-               this.alivePlayers = [];
-               this.currentTarget = null;
-               this.lastPlacementCleared = false;
+                // タイマーをクリア
+                if (this.dropTimer) {
+                    this.dropTimer.remove();
+                    this.dropTimer = null;
+                }
+                if (this.defeatTimer) {
+                    this.defeatTimer.remove();
+                    this.defeatTimer = null;
+                }
+                if (this.lockDelayTimer) {
+                    this.lockDelayTimer.remove();
+                    this.lockDelayTimer = null;
+                }
+                
+                this.gameStarted = false;
+                this.score = 0;
+                this.gameOver = false;
+                this.isMoving = false;
+                this.isBoardAnimating = false;
+                this.chainCount = 0;
+                this.comboCount = 0;
+                this.pendingGarbageCount = 0;
+                this.garbageQueue = [];
+                this.currentPair = null;
+                this.nextPair = null;
+                this.players = [];
+                this.alivePlayers = [];
+                this.currentTarget = null;
+                this.lastPlacementCleared = false;
+                this.chatInputFocused = false; // チャット入力状態をリセット
                
                 // スキル関連のリセット
                 this.skillGauge = 0;
@@ -6090,13 +6646,21 @@
                this.children.removeAll(true);
                this.opponentFields.clear();
 
-               for (let row = 0; row < ROWS; row++) {
-                   this.grid[row] = [];
-                   for (let col = 0; col < COLS; col++) {
-                       this.grid[row][col] = null;
-                   }
-               }
-           }
+                for (let row = 0; row < ROWS; row++) {
+                    this.grid[row] = [];
+                    for (let col = 0; col < COLS; col++) {
+                        this.grid[row][col] = null;
+                    }
+                }
+            }
+
+            destroy() {
+                if (this.isMobile) {
+                    this.input.off('pointerdown');
+                    this.input.off('pointerup');
+                }
+                super.destroy();
+            }
       }
 
       let game = null;

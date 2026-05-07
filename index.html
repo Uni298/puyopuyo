@@ -408,13 +408,13 @@
                     ホールド機能
                 </label>
             </div>
-            <div style="margin-bottom: 8px;">
-                <label for="defeatTime">敗北猶予: </label>
-                <input type="number" id="defeatTime" min="3" max="60" step="1" value="10" style="width: 60px;"> 秒
-            </div>
             <div style="margin-top: 8px;">
                 <label for="garbageDelay">おじゃま出現ラグ: </label>
                 <input type="number" id="garbageDelay" min="0" max="10" step="1" value="3" style="width: 60px;"> 秒
+            </div>
+            <div style="margin-top: 8px;">
+                <label for="defeatTime">敗北猶予時間: </label>
+                <input type="number" id="defeatTime" min="0" max="30" step="1" value="10" style="width: 60px;"> 秒
             </div>
             <div style="margin-top: 8px;">
                 <label for="disableDuelView">
@@ -496,6 +496,19 @@
                 </select>
             </div>
             <p style="margin: 8px 0 0 0; font-size: 11px; color: #856404;">※数値を上げると自分が不利になります</p>
+        </div>
+
+        <!-- Bot追加セクション（ホストのみ表示） -->
+        <div id="botSettings" class="hidden" style="margin: 15px 0; padding: 15px; background: #e8f4f8; border-radius: 12px; border: 1px solid #bee3f8; text-align: left;">
+            <h4 style="margin: 0 0 10px 0; color: #2b6cb0; font-size: 14px;">🤖 CPU（Bot）設定</h4>
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+                <label style="font-size:13px; color:#2b6cb0; white-space:nowrap;">速度(ms):</label>
+                <input type="number" id="botSpeedInput" min="100" max="5000" step="100" value="1200" style="padding: 6px; border-radius: 6px; border: 1px solid #bee3f8; font-size: 13px; width: 80px;">
+                <input type="text" id="botNameInput" placeholder="Bot名（任意）" maxlength="15" style="padding: 6px; border-radius: 6px; border: 1px solid #bee3f8; font-size: 13px; width: 110px;">
+                <button class="btn" onclick="addBot()" style="padding: 8px 16px; font-size: 13px; margin: 0; background: #3182ce;">追加</button>
+            </div>
+            <div style="font-size:11px; color:#718096; margin-bottom:6px;">小さいほど速い (例: 250=激速, 800=速, 1200=普通, 2500=遅)</div>
+            <div id="botList" style="font-size: 13px; color: #2b6cb0;"></div>
         </div>
 
         <button id="readyBtn" class="btn" onclick="toggleReady()">
@@ -1430,11 +1443,16 @@
                       document.getElementById('holdEnabled').disabled = false;
                      
                      document.getElementById('garbageRate').onchange = updateSettings;
+                     document.getElementById('garbageRate').oninput = updateSettings;
                      document.getElementById('dropSpeed').onchange = updateSettings;
+                     document.getElementById('dropSpeed').oninput = updateSettings;
                      document.getElementById('defeatTime').onchange = updateSettings;
+                     document.getElementById('defeatTime').oninput = updateSettings;
                       document.getElementById('garbageDelay').onchange = updateSettings;
+                      document.getElementById('garbageDelay').oninput = updateSettings;
                       document.getElementById('skillType').onchange = updateSettings;
                       document.getElementById('skillRequiredCount').onchange = updateSettings;
+                      document.getElementById('skillRequiredCount').oninput = updateSettings;
                       document.getElementById('animationMode').onchange = updateSettings;
                       document.getElementById('garbageMode').onchange = updateSettings;
                       document.getElementById('holdEnabled').onchange = updateSettings;
@@ -1457,9 +1475,11 @@
                case 'room_state':
                    allPlayers = data.players;
                    updatePlayerList(data.players, data.hostId);
+                   updateBotList(data.players);
 
-                   // 全員準備完了チェック
-                   const allReady = data.players.every(p => p.ready);
+                   // 全員準備完了チェック（Botは除外）
+                   const humanPlayers = data.players.filter(p => !p.isBot);
+                   const allReady = humanPlayers.every(p => p.ready);
                    if (allReady && data.players.length >= 2) {
                        document.getElementById('status').textContent = 'まもなく開始...';
                    } else if (data.players.length < 2) {
@@ -1529,11 +1549,16 @@
                                   }
                               };
                                garbageInput.onchange = updateSettings;
+                               garbageInput.oninput = updateSettings;
                                dropInput.onchange = updateSettings;
+                               dropInput.oninput = updateSettings;
                                defeatInput.onchange = updateSettings;
+                               defeatInput.oninput = updateSettings;
                                delayInput.onchange = updateSettings;
+                               delayInput.oninput = updateSettings;
                                skillTypeInput.onchange = updateSettings;
                                skillRequiredInput.onchange = updateSettings;
+                               skillRequiredInput.oninput = updateSettings;
                                animationModeInput.onchange = updateSettings;
                                garbageModeInput.onchange = updateSettings;
                                holdEnabledInput.onchange = updateSettings;
@@ -1955,6 +1980,48 @@
           if (discordBtn) {
               discordBtn.style.display = 'inline-block';
           }
+          // ホストのみBot設定を表示
+          if (isHost) {
+              const botSettings = document.getElementById('botSettings');
+              if (botSettings) botSettings.classList.remove('hidden');
+          }
+      }
+
+      // Bot管理
+      let localBots = []; // { id, name, difficulty }
+
+      function addBot() {
+          if (!ws || ws.readyState !== WebSocket.OPEN) return;
+          const botSpeed = parseInt(document.getElementById('botSpeedInput').value) || 1200;
+          const name = document.getElementById('botNameInput').value.trim();
+          // speedに応じてdifficultyを決定（先読み設定用）
+          let difficulty = 'normal';
+          if (botSpeed >= 2000) difficulty = 'easy';
+          else if (botSpeed <= 500) difficulty = 'hard';
+          ws.send(JSON.stringify({ type: 'add_bot', difficulty, name: name || undefined, botSpeed }));
+          document.getElementById('botNameInput').value = '';
+      }
+
+      function removeBot(botId) {
+          if (!ws || ws.readyState !== WebSocket.OPEN) return;
+          ws.send(JSON.stringify({ type: 'remove_bot', botId }));
+      }
+
+      function updateBotList(players) {
+          const botListEl = document.getElementById('botList');
+          if (!botListEl) return;
+          const bots = players.filter(p => p.isBot);
+          if (bots.length === 0) {
+              botListEl.innerHTML = '<span style="color:#718096; font-size:12px;">まだBotが追加されていません</span>';
+              return;
+          }
+          botListEl.innerHTML = bots.map(b => {
+              const diffLabel = b.name;
+              return `<div style="display:flex; align-items:center; gap:8px; margin-bottom:5px; padding:5px 8px; background:white; border-radius:6px; border:1px solid #bee3f8;">
+                  <span>🤖 ${escapeHtml(b.name)}</span>
+                  ${isHost ? `<button onclick="removeBot('${b.id}')" style="margin-left:auto; padding:2px 8px; font-size:11px; background:#e53e3e; color:white; border:none; border-radius:3px; cursor:pointer;">削除</button>` : ''}
+              </div>`;
+          }).join('');
       }
 
       function hideWaitingRoom() {
@@ -1996,6 +2063,7 @@
               item.className = 'player-item';
               if (player.ready) item.classList.add('ready');
               if (player.id === hostId) item.classList.add('host');
+              if (player.isBot) item.style.background = '#edf2ff';
 
               const nameInfo = document.createElement('div');
               nameInfo.style.display = 'flex';
@@ -2003,7 +2071,7 @@
 
               const name = document.createElement('span');
               name.style.fontWeight = 'bold';
-              name.textContent = player.name;
+              name.textContent = (player.isBot ? '🤖 ' : '') + player.name;
               if (player.id === hostId) name.textContent += ' 👑';
               if (player.id === myPlayerId) name.textContent += ' (あなた)';
               nameInfo.appendChild(name);
@@ -2024,13 +2092,19 @@
               item.appendChild(nameInfo);
               item.appendChild(status);
               
-              // ホストのみが他のプレイヤーをキックできる
+              // ホストのみが他のプレイヤーをキックできる（Botは削除）
               if (isMyHost && player.id !== myPlayerId) {
-                  const kickBtn = document.createElement('button');
-                  kickBtn.textContent = 'キック';
-                  kickBtn.style.cssText = 'margin-left: 10px; padding: 2px 8px; font-size: 11px; background: #e74c3c; color: white; border: none; border-radius: 3px; cursor: pointer;';
-                  kickBtn.onclick = () => kickPlayer(player.id);
-                  item.appendChild(kickBtn);
+                  const actionBtn = document.createElement('button');
+                  if (player.isBot) {
+                      actionBtn.textContent = '削除';
+                      actionBtn.style.cssText = 'margin-left: 10px; padding: 2px 8px; font-size: 11px; background: #3182ce; color: white; border: none; border-radius: 3px; cursor: pointer;';
+                      actionBtn.onclick = () => removeBot(player.id);
+                  } else {
+                      actionBtn.textContent = 'キック';
+                      actionBtn.style.cssText = 'margin-left: 10px; padding: 2px 8px; font-size: 11px; background: #e74c3c; color: white; border: none; border-radius: 3px; cursor: pointer;';
+                      actionBtn.onclick = () => kickPlayer(player.id);
+                  }
+                  item.appendChild(actionBtn);
               }
               
               list.appendChild(item);
@@ -2086,6 +2160,7 @@
                 this.keyHoldStartTime = {};
                 this.lastMoveTime = 0;
                 this.lastRotateTime = 0;
+                this.lastRotateDir = 0;
                 this.lockDelayTimer = null;
                 this.isOnGround = false;
                 
@@ -2162,6 +2237,7 @@
 
                 this.lastMoveTime = 0;
                 this.lastRotateTime = 0;
+                this.lastRotateDir = 0;
                 this.lockDelayTimer = null;
                 this.isOnGround = false;
                 
@@ -2471,12 +2547,6 @@
            }
 
           createField(x, label) {
-              // 既存のボーダーラインgraphicsを削除
-              const existingGraphics = this.children.list.filter(child => 
-                  child.type === 'Graphics' && child.getData && child.getData('borderLine')
-              );
-              existingGraphics.forEach(g => g.destroy());
-              
               // 背景
               const bg = this.add.rectangle(
                   x + COLS * CELL_SIZE / 2,
@@ -2486,9 +2556,13 @@
                   0xffffff
               ).setOrigin(0.5).setDepth(-10);
               bg.setData('myField', true);
+              bg.setData('baseX', bg.x);
+              bg.setData('baseY', bg.y);
 
               const gradient = this.add.image(x, 0, 'gradient').setOrigin(0).setDepth(-10);
               gradient.setData('myField', true);
+              gradient.setData('baseX', gradient.x);
+              gradient.setData('baseY', gradient.y);
 
               // 枠
               const border = this.add.rectangle(
@@ -2501,21 +2575,29 @@
               ).setOrigin(0.5).setDepth(-5);
               border.setStrokeStyle(4, 0x2c3e50);
               border.setData('myFieldBorder', true);
+              border.setData('baseX', border.x);
+              border.setData('baseY', border.y);
               this.myFieldBorder = border;
 
-              // ボーダーライン
-              const borderY = BORDER_LINE * CELL_SIZE;
-              const graphics = this.add.graphics();
-              graphics.lineStyle(3, 0xff0000, 0.8);
-              graphics.setDepth(100);
-              graphics.setData('borderLine', true);
-
-              for (let i = 0; i < COLS * CELL_SIZE; i += 10) {
-                  if (Math.floor(i / 10) % 2 === 0) {
-                      graphics.lineBetween(x + i, borderY, x + Math.min(i + 5, COLS * CELL_SIZE), borderY);
-                  }
-              }
-              graphics.setData('myField', true);
+              // 中央上2マスにバツ印を描画（ゲームオーバー判定マス）
+              [2, 3].forEach(col => {
+                  const cx = x + col * CELL_SIZE + CELL_SIZE / 2;
+                  const cy = 0 * CELL_SIZE + CELL_SIZE / 2; // row=0
+                  const size = CELL_SIZE * 0.28;
+                  
+                  const g = this.add.graphics();
+                  g.lineStyle(2.5, 0xcc0000, 0.6);
+                  g.beginPath();
+                  g.moveTo(cx - size, cy - size);
+                  g.lineTo(cx + size, cy + size);
+                  g.moveTo(cx + size, cy - size);
+                  g.lineTo(cx - size, cy + size);
+                  g.strokePath();
+                  g.setDepth(1);
+                  g.setData('myField', true);
+                  g.setData('baseX', g.x);
+                  g.setData('baseY', g.y);
+              });
 
               // ラベル
               this.add.text(x + COLS * CELL_SIZE / 2, -25, label, {
@@ -2595,16 +2677,21 @@
                    ).setOrigin(0.5).setDepth(-5);
                    field.border.setStrokeStyle(4, 0x2c3e50);
                    
-                   // ボーダーライン (赤線)
-                   const borderY = BORDER_LINE * CELL_SIZE;
-                   const graphics = this.add.graphics();
-                   graphics.lineStyle(3, 0xff0000, 0.8);
-                   graphics.setDepth(100);
-                   for (let i = 0; i < COLS * CELL_SIZE; i += 10) {
-                       if (Math.floor(i / 10) % 2 === 0) {
-                           graphics.lineBetween(opponentX + i, borderY, opponentX + Math.min(i + 5, COLS * CELL_SIZE), borderY);
-                       }
-                   }
+                   // ボーダーライン (赤線) → X印に変更
+                   [2, 3].forEach(col => {
+                       const cx = opponentX + col * CELL_SIZE + CELL_SIZE / 2;
+                       const cy = (opponentY - CELL_SIZE) + 0 * CELL_SIZE + CELL_SIZE / 2;
+                       const size = CELL_SIZE * 0.28;
+                       const g = this.add.graphics();
+                       g.lineStyle(2.5, 0xcc0000, 0.6);
+                       g.beginPath();
+                       g.moveTo(cx - size, cy - size);
+                       g.lineTo(cx + size, cy + size);
+                       g.moveTo(cx + size, cy - size);
+                       g.lineTo(cx - size, cy + size);
+                       g.strokePath();
+                       g.setDepth(5);
+                   });
                    
                    // プレイヤー名
                    const displayName = opponents[0].garbageMultiplier > 1.0 ? `${opponents[0].name} (x${parseFloat(opponents[0].garbageMultiplier).toFixed(2)})` : opponents[0].name;
@@ -2996,14 +3083,10 @@
               // 1v1モードまたはズーム中はフルテクスチャ、それ以外は円形
               const useFullTexture = this.is1v1Mode || (this.zoomedPlayerId === playerId);
 
-                  // 新しいデータで描画
-                  // 危険ラインチェック
+                  // 危険ラインチェック（中央上2マス col=2,3 row=0）
                   let isDanger = false;
-                  for (let col = 0; col < COLS; col++) {
-                      if (gridData[BORDER_LINE - 1][col]) {
-                          isDanger = true;
-                          break;
-                      }
+                  if (gridData[0] && (gridData[0][2] || gridData[0][3])) {
+                      isDanger = true;
                   }
                   if (field.border) {
                       field.border.setStrokeStyle(isDanger ? 4 : 2, isDanger ? 0xff0000 : 0x95a5a6);
@@ -3390,6 +3473,7 @@
 
           createPuyo(x, y, color, isGhost = false, customAlpha = 1, animate = true) {
               const puyo = this.add.container(x, y);
+              puyo.setDepth(10);
               const radius = CELL_SIZE * 0.38;
 
               const shadow = this.add.circle(2, 2, radius, 0x000000, 0.3);
@@ -3498,8 +3582,15 @@
                   }
               });
 
-              // ボーダーラインチェック（defeatTimerはcheckBorderLineで管理）
+              // X印マーク作成（初回のみ）
               this.checkBorderLine();
+              
+              // スポーン位置（col=2, row=0）にぷよがある → ゲームオーバー
+              const xCols = [2, 3];
+              const spawnBlocked = xCols.some(c => this.grid[0] && this.grid[0][c] !== null);
+              if (spawnBlocked && !this.gameOver) {
+                  this.endGame();
+              }
           }
 
           updateGhostPieces() {
@@ -3673,20 +3764,7 @@
                   this.hardDropTouchStartTime = null;
               }
 
-                // 敗北タイマー更新
-                if (this.defeatTimer) {
-                    const remaining = Math.ceil(this.defeatTimer.getRemaining() / 1000);
-                    this.defeatCountdownText.setText(remaining.toString());
-                    this.defeatCountdownText.setPosition(
-                        this.fieldOffsetX + COLS * CELL_SIZE / 2,
-                        ROWS * CELL_SIZE + 60
-                    );
-                    this.defeatCountdownText.setVisible(true);
-                } else {
-                    this.defeatCountdownText.setVisible(false);
-                }
-
-                 // 透明ぷよのチェック（上にぷよが乗ったか）
+                // 透明ぷよのチェック（上にぷよが乗ったか）
                  this.checkTransparentPuyoReveal();
              }
            
@@ -4080,10 +4158,6 @@
                     
                     if (upMainValid || upSubValid) {
                         this.currentPair.row--;
-                    } else {
-                        // それでもダメならゲームオーバー
-                        this.endGame();
-                        return;
                     }
                 }
 
@@ -4121,50 +4195,101 @@
 
                 this.currentPair = null;
   
-                // アニメーション処理を開始（非同期）
-                // 次のぷよはすぐに出して操作可能にする
-                // 既に次のぷよが存在する場合はスキップ（二重生成防止）
-                if (!this.currentPair) {
-                    this.spawnNewPair();
-                }
-                this.isMoving = false;
+                // ===== 中央上2マス（col=2,3, row=0）ゲームオーバー判定 =====
+                // 置いた後にX印のマス（row=0, col=2 or col=3）にぷよがあればゲームオーバー
+                // ただし、その後の消去でX印マスが空になれば「CLUTCH」で生還
+                const xCols = [2, 3];
+                const wasOnXMark = xCols.some(c => 
+                    positions.main.row === 0 && positions.main.col === c ||
+                    positions.sub.row === 0 && positions.sub.col === c
+                );
                 
-                // 透明ぷよのチェック - 立即に実行
-                this.time.delayedCall(50, () => {
-                    this.checkTransparentPuyoReveal();
-                });
-
+                // X印マス（row=0, col=2 or col=3）に既存のぷよが重なっていた場合もゲームオーバー候補
+                const xMarkBlocked = xCols.some(c => this.grid[0] && this.grid[0][c] !== null);
+                
                  // 盤面処理はバックグラウンドで実行
-                 try {
-                     this.processBoardMatches();
-                 } catch (e) {
+                 this.processBoardMatchesWithXCheck(xMarkBlocked || wasOnXMark).catch(e => {
                      console.error('Error in processBoardMatches:', e);
-                     this.isBoardAnimating = false;
+                 });
+
+                 // 次のぷよをすぐに出して操作可能にする
+                 if (!this.currentPair && !this.gameOver) {
+                     this.spawnNewPair();
                  }
+                 this.isMoving = false;
              }
+
+            showFlyingGarbage(fromX, fromY, toX, toY, amount, color = 0x888888) {
+                const count = Math.min(amount, 30);
+                for (let i = 0; i < count; i++) {
+                    const particle = this.add.circle(fromX, fromY, CELL_SIZE * 0.2, color, 0.8);
+                    particle.setDepth(200);
+
+                    // 中間地点をランダムにずらして曲線を作る
+                    const midX = (fromX + toX) / 2 + (Math.random() - 0.5) * 300;
+                    const midY = (fromY + toY) / 2 - 200 - Math.random() * 200;
+
+                    const curve = new Phaser.Curves.QuadraticBezier(
+                        new Phaser.Math.Vector2(fromX, fromY),
+                        new Phaser.Math.Vector2(midX, midY),
+                        new Phaser.Math.Vector2(toX, toY)
+                    );
+
+                    const duration = 600 + Math.random() * 400;
+                    
+                    this.tweens.addCounter({
+                        from: 0,
+                        to: 1,
+                        duration: duration,
+                        delay: i * 20,
+                        ease: 'Quad.easeOut',
+                        onUpdate: (tween) => {
+                            const p = curve.getPoint(tween.getValue());
+                            particle.setPosition(p.x, p.y);
+                        },
+                        onComplete: () => {
+                            particle.destroy();
+                            // 届いた瞬間に一回だけ揺らす（最初の1個目などで）
+                            if (i === 0 && toX === this.fieldOffsetX + COLS * CELL_SIZE / 2) {
+                                this.shakeField();
+                            }
+                        }
+                    });
+                }
+            }
  
-            async processBoardMatches() {
-                 // アニメーション中フラグは立てるが、操作はブロックしない
+            async processBoardMatchesWithXCheck(hadXMarkConflict) {
                  this.isBoardAnimating = true;
                  
                  try {
-                     this.chainCount = 0;  // チェインはリセット
-                     // コンボはリセットしない（消えなかったらリセット）
+                     this.chainCount = 0;
                      
-                     await this.applyGravity();  // 先に重力を適用してプヨを落とす
-                     
-                     // 重力適用後に透明ぷよをチェック
+                     await this.applyGravity();
                      this.checkTransparentPuyoReveal();
-                     
                      await this.checkAndClearMatches();
-                     
-                     // 連鎖後も透明ぷよをチェック
                      this.checkTransparentPuyoReveal();
      
-                     // 待機キューから確定へ移動 (時間が経過したもの)
+                     // X印マス（row=0, col=2 or col=3）のチェック
+                     const xCols = [2, 3];
+                     const xMarkNowBlocked = xCols.some(c => this.grid[0] && this.grid[0][c] !== null);
+                     
+                     if (hadXMarkConflict) {
+                         if (xMarkNowBlocked) {
+                             // X印マスがまだ埋まっている → ゲームオーバー
+                             if (!this.gameOver) {
+                                 this.endGame();
+                             }
+                             this.isBoardAnimating = false;
+                             return;
+                         } else {
+                             // X印マスが消去で空になった → CLUTCH!
+                             this.showClutchText();
+                         }
+                     }
+     
+                     // 待機キューから確定へ移動
                      if (this.garbageQueue) {
                          const now = this.time.now;
-                         // 逆順でループして安全に削除
                          for (let i = this.garbageQueue.length - 1; i >= 0; i--) {
                              if (now >= this.garbageQueue[i].time) {
                                  this.pendingGarbageCount += this.garbageQueue[i].amount;
@@ -4173,9 +4298,7 @@
                          }
                      }
      
-                     // おじゃまぷよの処理
                      if (this.pendingGarbageCount > 0) {
-                        // 少し遅らせておじゃまぷよの落下演出
                         this.time.delayedCall(200, () => {
                             this.dropGarbagePuyos();
                         });
@@ -4183,10 +4306,37 @@
      
                     this.sendFieldUpdate();
                 } catch (e) {
-                    console.error('Error in processBoardMatches:', e);
+                    console.error('Error in processBoardMatchesWithXCheck:', e);
                 } finally {
                     this.isBoardAnimating = false;
                 }
+            }
+
+            async processBoardMatches() {
+                 return this.processBoardMatchesWithXCheck(false);
+            }
+            
+            showClutchText() {
+                // 小さめの灰色テキストで「CLUTCH」と画面上部に表示し、横に広がりながら消える
+                const cx = this.fieldOffsetX + COLS * CELL_SIZE / 2;
+                const cy = 30;
+                const clutch = this.add.text(cx, cy, 'CLUTCH', {
+                    fontSize: '16px',
+                    fontFamily: '"JetBrains Mono"',
+                    fill: '#999999',
+                    fontStyle: 'bold',
+                    alpha: 0.7
+                }).setOrigin(0.5).setDepth(500);
+                
+                this.tweens.add({
+                    targets: clutch,
+                    scaleX: 3.5,
+                    scaleY: 0.5,
+                    alpha: 0,
+                    duration: 900,
+                    ease: 'Power2',
+                    onComplete: () => { if (clutch && clutch.scene) clutch.destroy(); }
+                });
             }
 
           async checkAndClearMatches() {
@@ -4312,6 +4462,32 @@
                       }
 
                       await this.applyGravity();
+
+                      // 全消しチェック
+                      const isEmpty = this.grid.every(row => row.every(cell => cell === null));
+                      if (isEmpty) {
+                          const allClearText = this.add.text(
+                              this.fieldOffsetX + COLS * CELL_SIZE / 2,
+                              ROWS * CELL_SIZE / 2,
+                              '✨ ALL CLEAR! ✨',
+                              { fontSize: '28px', fontFamily: '"JetBrains Mono"', fill: '#FFD700', fontStyle: 'bold', stroke: '#000', strokeThickness: 4 }
+                          ).setOrigin(0.5).setDepth(500);
+                          this.tweens.add({
+                              targets: allClearText,
+                              y: allClearText.y - 60,
+                              alpha: 0,
+                              scale: 1.5,
+                              duration: 1500,
+                              ease: 'Power2',
+                              onComplete: () => { try { allClearText.destroy(); } catch(e) {} }
+                          });
+                          // 相手に10おじゃまを送る
+                          const allClearPos = [{ row: 0, col: 2 }, { row: 0, col: 3 }];
+                          this.sendGarbage(10, allClearPos);
+                          this.updateGarbageGauge();
+                          this.sendFieldUpdate();
+                      }
+
                       await this.delay(50);
                   }
               }
@@ -4453,6 +4629,7 @@
 
                           try {
                               const particle = this.add.circle(x, y, 6, COLOR_VALUES[color]);
+                              particle.setDepth(50);
                               this.tweens.add({
                                   targets: particle,
                                   x: x + Math.cos(angle) * distance,
@@ -4472,6 +4649,7 @@
 
                       try {
                           const ring = this.add.circle(x, y, 10, 0xffffff, 0.8);
+                          ring.setDepth(50);
                           this.tweens.add({
                               targets: ring,
                               radius: 40,
@@ -5143,41 +5321,21 @@
               if (!targetField) return;
 
               // 自分の攻撃が特定の相手に飛んでいくアニメーション
-              sourcePositions.slice(0, amount).forEach((pos, i) => {
-                  const startX = pos.x;
-                  const startY = pos.y;
-                  
-                  const particle = this.add.circle(startX, startY, CELL_SIZE * 0.25, 0x888888, 0.9);
-                  particle.setDepth(200);
+              const posArray = sourcePositions && sourcePositions.length > 0 ? sourcePositions : [{x: this.fieldOffsetX + COLS * CELL_SIZE / 2, y: ROWS * CELL_SIZE / 2}];
+              
+              const startX = posArray[0].x || (this.fieldOffsetX + COLS * CELL_SIZE / 2);
+              const startY = posArray[0].y || (this.fieldOffsetY + ROWS * CELL_SIZE / 2);
+              
+              let targetX, targetY;
+              if (!this.is1v1Mode) {
+                  targetX = targetField.x + (targetField.width || (COLS * CELL_SIZE * targetField.scale)) / 2;
+                  targetY = targetField.y + (targetField.height || (ROWS * CELL_SIZE * targetField.scale)) / 2;
+              } else {
+                  targetX = targetField.x + (COLS * CELL_SIZE * targetField.scale) / 2;
+                  targetY = targetField.y + (ROWS * CELL_SIZE * targetField.scale) / 2;
+              }
 
-                  // 相手フィールドの中心へ
-                  let targetX = targetField.x; 
-                  let targetY = targetField.y;
-                  
-                  // フィールドの中央座標を計算 (scale考慮)
-                  if (!this.is1v1Mode) {
-                      // BRモードなどは中央基準で配置されている(createOpponentFields参照)
-                      targetX = targetField.x + (targetField.width || (COLS * CELL_SIZE * targetField.scale)) / 2;
-                      targetY = targetField.y + (targetField.height || (ROWS * CELL_SIZE * targetField.scale)) / 2;
-                  } else {
-                      // 1v1モード
-                      targetX = targetField.x + (COLS * CELL_SIZE * targetField.scale) / 2;
-                      targetY = targetField.y + (ROWS * CELL_SIZE * targetField.scale) / 2;
-                  }
-                  
-                  // ユーザー要望「送り先に飛ぶ」 -> 中心
-                  this.tweens.add({
-                      targets: particle,
-                      x: targetX,
-                      y: targetY,
-                      scale: 0.5,
-                      alpha: 0,
-                      duration: 800,
-                      delay: i * 30,
-                      ease: 'Power2',
-                      onComplete: () => particle.destroy()
-                  });
-              });
+              this.showFlyingGarbage(startX, startY, targetX, targetY, amount);
           }
 
           receiveGarbage(fromPlayerId, amount, colors, sourcePositions) {
@@ -5206,34 +5364,14 @@
 
               // 攻撃元から自分のフィールドへ飛んでくるアニメーション
               const posArray = sourcePositions && sourcePositions.length > 0 ? sourcePositions : [{row: 0, col: 0}];
+              const pos = posArray[0];
+              const sourceX = sourceField.x + (pos.col * CELL_SIZE * sourceField.scale) + (CELL_SIZE * sourceField.scale / 2);
+              const sourceY = sourceField.y + (pos.row * CELL_SIZE * sourceField.scale) + (CELL_SIZE * sourceField.scale / 2);
 
-              for (let i = 0; i < amount; i++) {
-                  const pos = posArray[i % posArray.length];
-                  // 相手フィールドのスケール調整された位置から飛ばす
-                  const sourceX = sourceField.x + (pos.col * CELL_SIZE * sourceField.scale) + (CELL_SIZE * sourceField.scale / 2);
-                  const sourceY = sourceField.y + (pos.row * CELL_SIZE * sourceField.scale) + (CELL_SIZE * sourceField.scale / 2);
+              const targetX = this.fieldOffsetX + COLS * CELL_SIZE / 2;
+              const targetY = -50;
 
-                  const particle = this.add.circle(sourceX, sourceY, CELL_SIZE * 0.25, 0x888888, 0.9);
-                  particle.setDepth(200);
-
-                  // 自分のフィールドの上部へ
-                  const targetX = this.fieldOffsetX + COLS * CELL_SIZE / 2;
-                  const targetY = -50;
-
-                  this.tweens.add({
-                      targets: particle,
-                      x: targetX,
-                      y: targetY,
-                      scale: 0.8,
-                      alpha: 0.6,
-                      duration: 600,
-                      delay: i * 30,
-                      ease: 'Power2',
-                      onComplete: () => {
-                          particle.destroy();
-                      }
-                  });
-              }
+              this.showFlyingGarbage(sourceX, sourceY, targetX, targetY, amount);
           }
 
           updateGarbageReceivedDisplay(playerId) {
@@ -5244,7 +5382,7 @@
               if (total <= 0) return;
 
               if (!this.receivedGarbageTexts.has(playerId)) {
-                  const text = this.add.text(field.x + field.width / 2, field.y + field.height + 15, `Received: ${total}`, {
+                  const text = this.add.text(field.x + (field.width || (COLS * CELL_SIZE * field.scale)) / 2, (field.y + (field.height || (ROWS * CELL_SIZE * field.scale))) + 15, `Received: ${total}`, {
                       fontSize: '14px',
                       fill: '#e74c3c',
                       fontStyle: 'bold'
@@ -5262,30 +5400,14 @@
               if (!fromField || !toField) return;
 
               const posArray = sourcePositions && sourcePositions.length > 0 ? sourcePositions : [{row: 0, col: 0}];
+              const pos = posArray[0];
+              const sourceX = fromField.x + (pos.col * CELL_SIZE * fromField.scale) + (CELL_SIZE * fromField.scale / 2);
+              const sourceY = fromField.y + (pos.row * CELL_SIZE * fromField.scale) + (CELL_SIZE * fromField.scale / 2);
               
-              for (let i = 0; i < Math.min(amount, 15); i++) {
-                  const pos = posArray[i % posArray.length];
-                  const sourceX = fromField.x + (pos.col * CELL_SIZE * fromField.scale) + (CELL_SIZE * fromField.scale / 2);
-                  const sourceY = fromField.y + (pos.row * CELL_SIZE * fromField.scale) + (CELL_SIZE * fromField.scale / 2);
-                  
-                  const targetX = toField.x + toField.width / 2;
-                  const targetY = toField.y + toField.height / 2;
-                  
-                  const particle = this.add.circle(sourceX, sourceY, CELL_SIZE * 0.2, 0x888888, 0.7);
-                  particle.setDepth(200);
-                  
-                  this.tweens.add({
-                      targets: particle,
-                      x: targetX,
-                      y: targetY,
-                      scale: 0.5,
-                      alpha: 0,
-                      duration: 500,
-                      delay: i * 30,
-                      ease: 'Power2',
-                      onComplete: () => particle.destroy()
-                  });
-              }
+              const targetX = toField.x + (toField.width || (COLS * CELL_SIZE * toField.scale)) / 2;
+              const targetY = toField.y + (toField.height || (ROWS * CELL_SIZE * toField.scale)) / 2;
+              
+              this.showFlyingGarbage(sourceX, sourceY, targetX, targetY, amount);
           }
           
           showOpponentHardDrop(playerId, data) {
@@ -5412,6 +5534,14 @@
                // おじゃまぷよ落下後に透明ぷよをチェック
                this.checkTransparentPuyoReveal();
   
+               // X印マス（row=0, col=2,3）チェック
+               const xCols = [2, 3];
+               const xBlocked = xCols.some(c => this.grid[0] && this.grid[0][c] !== null);
+               if (xBlocked && !this.gameOver) {
+                   this.endGame();
+                   return;
+               }
+               
                // 最後に境界チェック
                this.checkBorderLine();
             }
@@ -5488,7 +5618,7 @@
                }
             }
             
-              async raiseGarbagePuyos(count) {
+             async raiseGarbagePuyos(count) {
                   // テトリス風：消したぷよ/2 = 段数（全て切り下げ）
                   
                   // 段数を計算 - 切り下げ
@@ -5508,8 +5638,12 @@
                       });
                   }
                   
-                  // ゲームオーバーチェック：rowsToAdd行分以上にぷよがある場合
-                  // 最上位のrowsToAdd行が埋まっていたらゲームオーバー
+                  // 1. 振動エフェクトで警告
+                  this.quickShake();
+                  // 少し待機（プレイヤーが反応する猶予）
+                  await this.delay(300);
+
+                  // 2. ゲームオーバーチェック：最上段のぷよが押し出されるかチェック
                   let gameOver = false;
                   for (let row = 0; row < rowsToAdd; row++) {
                       for (let col = 0; col < COLS; col++) {
@@ -5526,11 +5660,10 @@
                       return;
                   }
                   
-                  // 1. 全てのぷよを一時配列にコピー
+                  // 3. 全てのぷよを一時配列にコピー
                   const tempGrid = Array(ROWS).fill(null).map(() => Array(COLS).fill(null));
                   
                   // 下から順にぷよを上に移動（rowsToAdd段分）
-                  // 下のrowsToAdd行は消え、全てがrowsToAdd行分上に移動する
                   for (let row = ROWS - 1; row >= rowsToAdd; row--) {
                       for (let col = 0; col < COLS; col++) {
                           if (this.grid[row][col]) {
@@ -5540,14 +5673,14 @@
                       }
                   }
                   
-                  // 2. 元のgridをクリア（ぷよオブジェクトはtempGridに保持）
+                  // 4. 元のgridをクリア
                   for (let row = 0; row < ROWS; row++) {
                       for (let col = 0; col < COLS; col++) {
                           this.grid[row][col] = null;
                       }
                   }
                   
-                  // 3. 上昇したぷよの位置を更新
+                  // 5. 上昇したぷよの位置を更新
                   for (let row = 0; row < ROWS; row++) {
                       for (let col = 0; col < COLS; col++) {
                           if (tempGrid[row][col]) {
@@ -5558,7 +5691,7 @@
                       }
                   }
                   
-                  // 4. 下から新しい garbage ぷよを配置（アニメーションなし）
+                  // 6. 下から新しい garbage ぷよを配置
                   for (let rowOffset = 0; rowOffset < rowsToAdd; rowOffset++) {
                       const targetRow = ROWS - 1 - rowOffset;
                       
@@ -5571,8 +5704,54 @@
                           this.grid[targetRow][col] = puyo;
                       }
                   }
+
+                  // 7. 現在操作中のぷよを押し上げる (Squeeze up logic)
+                  if (this.currentPair && !this.gameOver) {
+                      // 押し上げられた後の新しい位置をチェック
+                      // 1段ずつ上にずらして、有効な位置（グリッド内の空き）を探す
+                      let squeezeOffset = rowsToAdd;
+                      let foundValid = false;
+                      
+                      // 最大 ROWS 分まで上にずらして空きを探す
+                      for (let offset = squeezeOffset; offset < ROWS; offset++) {
+                          const testRow = this.currentPair.row - offset;
+                          const positions = this.getPairPositions(this.currentPair.col, testRow, this.currentPair.rotation);
+                          
+                          // isValidPosition を使うが、上端より上の場合は row < 0 なので許容されるべき
+                          // ただし grid[row][col] へのアクセスは row >= 0 の時のみ
+                          let isBlocked = false;
+                          for (let pos of [positions.main, positions.sub]) {
+                              if (pos.col < 0 || pos.col >= COLS || pos.row >= ROWS) {
+                                  isBlocked = true;
+                                  break;
+                              }
+                              if (pos.row >= 0 && this.grid[pos.row][pos.col] !== null) {
+                                  isBlocked = true;
+                                  break;
+                              }
+                          }
+
+                          if (!isBlocked) {
+                              this.currentPair.row = testRow;
+                              foundValid = true;
+                              break;
+                          }
+                      }
+
+                      if (foundValid) {
+                          // 位置を即座に更新（グラフィック）
+                          const positions = this.getPairPositions(this.currentPair.col, this.currentPair.row, this.currentPair.rotation);
+                          this.currentPair.main.sprite.y = positions.main.row * CELL_SIZE + CELL_SIZE / 2;
+                          this.currentPair.sub.sprite.y = positions.sub.row * CELL_SIZE + CELL_SIZE / 2;
+                          this.updateGhostPieces();
+                      } else {
+                          // 逃げ場がない場合はゲームオーバー
+                          this.endGame();
+                          return;
+                      }
+                  }
                   
-                  // 5. 振動エフェクト
+                  // 8. 再度振動エフェクト
                   this.quickShake();
                   
                   // 状態を更新
@@ -5587,18 +5766,19 @@
                 
                 fieldElements.forEach(el => {
                     if (el) {
-                        const originalX = el.x;
-                        const originalY = el.y;
+                        const bx = el.getData('baseX');
+                        const by = el.getData('baseY');
+                        if (bx === undefined || by === undefined) return;
+
                         this.tweens.add({
                             targets: el,
-                            x: originalX + 3,
-                            y: originalY + 3,
+                            x: bx + 3,
+                            y: by + 3,
                             duration: 30,
                             yoyo: true,
                             repeat: 2,
                             onComplete: () => {
-                                el.x = originalX;
-                                el.y = originalY;
+                                el.setPosition(bx, by);
                             }
                         });
                     }
@@ -5613,18 +5793,19 @@
                 
                 fieldElements.forEach(el => {
                     if (el) {
-                        const originalX = el.x;
-                        const originalY = el.y;
+                        const bx = el.getData('baseX');
+                        const by = el.getData('baseY');
+                        if (bx === undefined || by === undefined) return;
+
                         this.tweens.add({
                             targets: el,
-                            x: originalX + 4,
-                            y: originalY + 4,
+                            x: bx + 4,
+                            y: by + 4,
                             duration: 15,
                             yoyo: true,
                             repeat: 2,
                             onComplete: () => {
-                                el.x = originalX;
-                                el.y = originalY;
+                                el.setPosition(bx, by);
                             }
                         });
                     }
@@ -5656,50 +5837,41 @@
           }
 
           checkBorderLine() {
-              let isDanger = false;
-              // BORDER_LINEを超えているかチェック (index < BORDER_LINE)
-              // BORDER_LINE (index 4) にぷよがあるのはセーフ
-              // grid[3]以下にぷよがあるとアウト
-              for (let col = 0; col < COLS; col++) {
-                   if (this.grid[BORDER_LINE - 1][col] !== null) {
-                       isDanger = true;
-                       break;
-                   }
+              // 中央上2マス（col=2, col=3, row=0）にバツ印があり、
+              // そこにぷよが置かれたらゲームオーバー
+              // この関数では主にバツ印の表示/管理を担当
+              // 実際のゲームオーバー判定はlockPair内で行う
+              
+              // バツ印表示が未作成なら作成
+              if (!this.xMarkCreated) {
+                  this.createXMarks();
+                  this.xMarkCreated = true;
               }
-
-              if (isDanger) {
-                  if (!this.defeatTimer && !this.gameOver) {
-                      const defeatTime = (this.gameSettings && this.gameSettings.defeatTime) !== undefined ? this.gameSettings.defeatTime : 10;
-                      
-                      // 敗北猶予が0秒の場合は即座にゲームオーバー
-                      if (defeatTime === 0) {
-                          this.endGame();
-                      } else {
-                          // タイマー開始
-                          this.defeatTimer = this.time.delayedCall(defeatTime * 1000, () => {
-                              this.endGame();
-                          });
-                          this.defeatCountdownText.setVisible(true);
-                      }
-                      
-                      // 枠を赤くする
-                      if (this.myFieldBorder) {
-                          this.myFieldBorder.setStrokeStyle(4, 0xff0000);
-                      }
-                  }
-              } else {
-                  // 解除
-                  if (this.defeatTimer) {
-                      this.defeatTimer.remove();
-                      this.defeatTimer = null;
-                      this.defeatCountdownText.setVisible(false);
-                      
-                      // 枠を元に戻す
-                      if (this.myFieldBorder) {
-                          this.myFieldBorder.setStrokeStyle(4, 0x2c3e50);
-                      }
-                  }
+          }
+          
+          createXMarks() {
+              // 中央上2マス（col=2, col=3）にバツ印を描画
+              if (this.xMarks) {
+                  this.xMarks.forEach(x => x.destroy());
               }
+              this.xMarks = [];
+              
+              [2, 3].forEach(col => {
+                  const cx = this.fieldOffsetX + col * CELL_SIZE + CELL_SIZE / 2;
+                  const cy = 0 * CELL_SIZE + CELL_SIZE / 2; // row=0
+                  const size = CELL_SIZE * 0.3;
+                  
+                  const g = this.add.graphics();
+                  g.lineStyle(3, 0xcc0000, 0.7);
+                  g.beginPath();
+                  g.moveTo(cx - size, cy - size);
+                  g.lineTo(cx + size, cy + size);
+                  g.moveTo(cx + size, cy - size);
+                  g.lineTo(cx - size, cy + size);
+                  g.strokePath();
+                  g.setDepth(1);
+                  this.xMarks.push(g);
+              });
           }
 
           handlePlayerDefeated(playerId) {
@@ -6156,8 +6328,7 @@
                                   puyoContainer.setScale(field.scale);
                                   // createPuyo adds puyo to 'this', but we want it tracked in grid
                                   // We should set depth
-                                  puyoContainer.setDepth(field.bg.depth + 5);
-                                  // createPuyo sets 'color' data
+                                  puyoContainer.setDepth(field.bg.depth + 20);                                  // createPuyo sets 'color' data
                                   
                                   field.grid[r][c] = puyoContainer;
                               } else {
@@ -6581,7 +6752,7 @@
               this.gameOver = true;
               if (this.dropTimer) this.dropTimer.remove();
               if (this.defeatTimer) this.defeatTimer.remove();
-              this.defeatCountdownText.setVisible(false);
+              if (this.defeatCountdownText) this.defeatCountdownText.setVisible(false);
 
               this.collapseMyField();
 

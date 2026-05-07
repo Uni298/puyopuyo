@@ -262,6 +262,12 @@ function handleMessage(ws, data) {
     case "force_end_game":
       handleForceEndGame(ws);
       break;
+    case "add_bot":
+      handleAddBot(ws, data);
+      break;
+    case "remove_bot":
+      handleRemoveBot(ws, data);
+      break;
   }
 }
 
@@ -609,6 +615,10 @@ function startGame(room) {
   }
   room.gameStarted = true;
   room.alivePlayers = room.players.map((p) => p.playerId);
+  // Botも生存リストに追加
+  if (room.bots && room.bots.length > 0) {
+    room.bots.forEach(b => { if (!room.alivePlayers.includes(b.id)) room.alivePlayers.push(b.id); });
+  }
 
 
   room.playerStates.forEach((state) => {
@@ -641,6 +651,9 @@ function startGame(room) {
   room.players.forEach((player) => {
     player.send(startMessage);
   });
+
+  // Botゲームループ開始
+  startBotsInRoom(room, seed);
 
   console.log(
     `Game started in room: ${room.code} with ${room.players.length} players`,
@@ -693,7 +706,11 @@ function leaveRoom(ws) {
   }
 
   if (room.players.length === 0) {
-
+    // Botタイマーをすべて停止
+    if (room.bots) {
+      room.bots.forEach(b => { if (b.dropTimer) clearInterval(b.dropTimer); });
+      room.bots = [];
+    }
     rooms.delete(ws.roomCode);
     console.log(`Room deleted: ${ws.roomCode}`);
     discordBot.onRoomClosed(ws.roomCode);
@@ -799,10 +816,11 @@ function sendGarbage(ws, data) {
   room.playerTargets.set(ws.playerId, targetId);
 
   const targetPlayer = room.players.find((p) => p.playerId === targetId);
+  const targetBotState = room.bots && room.bots.find((b) => b.id === targetId);
   const targetState = room.playerStates.get(targetId);
   const attackerState = room.playerStates.get(ws.playerId);
 
-  if (targetPlayer && targetState && attackerState) {
+  if (targetState && attackerState) {
     const multiplier = targetState.garbageMultiplier || 1.0;
     const finalAmount = Math.floor(data.amount * multiplier);
 
@@ -810,16 +828,22 @@ function sendGarbage(ws, data) {
     attackerState.totalGarbageSent = (attackerState.totalGarbageSent || 0) + finalAmount;
     targetState.totalGarbageReceived = (targetState.totalGarbageReceived || 0) + finalAmount;
 
-    // ターゲチEに送信
-    targetPlayer.send(
-      JSON.stringify({
-        type: "receive_garbage",
-        fromPlayerId: ws.playerId,
-        amount: finalAmount,
-        colors: data.colors,
-        sourcePositions: data.positions,
-      }),
-    );
+    if (targetPlayer) {
+      // ターゲットに送信
+      targetPlayer.send(
+        JSON.stringify({
+          type: "receive_garbage",
+          fromPlayerId: ws.playerId,
+          amount: finalAmount,
+          colors: data.colors,
+          sourcePositions: data.positions,
+        }),
+      );
+    } else if (targetBotState) {
+      // Botに送信 (キューに追加)
+      const delayMs = ((room.settings && room.settings.garbageDelay) || 3) * 1000;
+      targetBotState.garbageQueue.push({ amount: finalAmount, time: Date.now() + delayMs });
+    }
 
     // 攻撁EEEE刁Eに送信通知を送るEアニメーション用EE
     ws.send(
@@ -1015,6 +1039,755 @@ function handleSkill2Activated(ws, data) {
         }
     });
   }
+}
+
+// ============================================================
+// BOT システム
+// ============================================================
+
+const BOT_COLS = 6;
+const BOT_ROWS = 14;
+const BOT_COLORS = ['red', 'blue', 'green', 'yellow', 'purple'];
+
+function createBotState(name, difficulty) {
+  return {
+    id: 'bot_' + Math.random().toString(36).substring(2, 10),
+    name: name || 'CPU',
+    difficulty: difficulty || 'normal', // easy / normal / hard
+    isBot: true,
+    ready: true,
+    alive: true,
+    score: 0,
+    isSpectator: false,
+    garbageMultiplier: 1.0,
+    totalGarbageSent: 0,
+    totalGarbageReceived: 0,
+    // ゲームステート
+    grid: Array.from({length: BOT_ROWS}, () => Array(BOT_COLS).fill(null)),
+    // seed-based RNG (共有シードを使う)
+    rngSeed: 0,
+    rngState: 0,
+    // 次のぷよキュー（サーバー側で管理）
+    nextQueue: [],
+    currentPair: null,
+    pendingGarbage: 0,
+    garbageQueue: [],
+    dropTimer: null,
+    thinkTimer: null,
+    gameOver: false,
+  };
+}
+
+// LCG乱数（ゲームと同じシードで同じ色列を生成）
+function botRng(state) {
+  // Phaser.Math.RandomDataGenerator互換の簡易実装
+  state.rngState = (state.rngState * 1664525 + 1013904223) & 0xffffffff;
+  return (state.rngState >>> 0) / 0x100000000;
+}
+
+function botPickColor(state) {
+  const idx = Math.floor(botRng(state) * BOT_COLORS.length);
+  return BOT_COLORS[idx];
+}
+
+function botCreatePair(state) {
+  return { main: botPickColor(state), sub: botPickColor(state) };
+}
+
+// シードを使ってRNG初期化（Phaser互換の簡易版）
+function initBotRng(state, seed) {
+  // Phaser RandomDataGenerator は seeds配列からハッシュを作る
+  // 簡易版: seedをそのままrngStateに使う
+  state.rngSeed = seed;
+  state.rngState = seed ^ 0xdeadbeef;
+  // 数回空回しして初期化
+  for (let i = 0; i < 10; i++) botRng(state);
+}
+
+// ====== Bot AI: 盤面評価 ======
+
+function cloneGrid(grid) {
+  return grid.map(row => [...row]);
+}
+
+// 重力適用（ぷよを下に落とす）
+function applyGravityBot(grid) {
+  let moved = true;
+  while (moved) {
+    moved = false;
+    for (let row = BOT_ROWS - 2; row >= 0; row--) {
+      for (let col = 0; col < BOT_COLS; col++) {
+        if (grid[row][col] && !grid[row + 1][col]) {
+          grid[row + 1][col] = grid[row][col];
+          grid[row][col] = null;
+          moved = true;
+        }
+      }
+    }
+  }
+}
+
+// 氾濫探索（連鎖検出）
+function floodFillBot(grid, startRow, startCol, visited) {
+  const color = grid[startRow][startCol];
+  if (!color || color === 'gray') return [];
+  const group = [];
+  const stack = [[startRow, startCol]];
+  while (stack.length > 0) {
+    const [r, c] = stack.pop();
+    if (r < 0 || r >= BOT_ROWS || c < 0 || c >= BOT_COLS) continue;
+    if (visited[r][c]) continue;
+    if (grid[r][c] !== color) continue;
+    visited[r][c] = true;
+    group.push([r, c]);
+    stack.push([r-1,c],[r+1,c],[r,c-1],[r,c+1]);
+  }
+  return group;
+}
+
+// マッチを検出して消去、おじゃまも巻き込み
+function findAndClearBot(grid) {
+  const visited = Array.from({length: BOT_ROWS}, () => Array(BOT_COLS).fill(false));
+  const toRemove = new Set();
+  let cleared = 0;
+
+  for (let r = 0; r < BOT_ROWS; r++) {
+    for (let c = 0; c < BOT_COLS; c++) {
+      if (grid[r][c] && grid[r][c] !== 'gray' && !visited[r][c]) {
+        const group = floodFillBot(grid, r, c, visited);
+        if (group.length >= 4) {
+          group.forEach(([gr, gc]) => toRemove.add(`${gr},${gc}`));
+          cleared += group.length;
+          // おじゃまを巻き込み
+          group.forEach(([gr, gc]) => {
+            [[gr-1,gc],[gr+1,gc],[gr,gc-1],[gr,gc+1]].forEach(([nr,nc]) => {
+              if (nr>=0&&nr<BOT_ROWS&&nc>=0&&nc<BOT_COLS&&grid[nr][nc]==='gray') {
+                toRemove.add(`${nr},${nc}`);
+              }
+            });
+          });
+        }
+      }
+    }
+  }
+  toRemove.forEach(key => {
+    const [r,c] = key.split(',').map(Number);
+    grid[r][c] = null;
+  });
+  return cleared;
+}
+
+// 連鎖シミュレーション
+function simulateChains(grid) {
+  let totalChains = 0;
+  let totalCleared = 0;
+  let chainCount = 0;
+  while (true) {
+    applyGravityBot(grid);
+    const cleared = findAndClearBot(grid);
+    if (cleared === 0) break;
+    chainCount++;
+    totalCleared += cleared;
+  }
+  return { chains: chainCount, cleared: totalCleared };
+}
+
+// 盤面評価関数
+function evaluateGrid(grid, difficulty) {
+  // 1. 高さペナルティ
+  let heightPenalty = 0;
+  let maxHeight = 0;
+  for (let c = 0; c < BOT_COLS; c++) {
+    let h = 0;
+    for (let r = 0; r < BOT_ROWS; r++) {
+      if (grid[r][c]) { h = BOT_ROWS - r; break; }
+    }
+    heightPenalty += h * h;
+    if (h > maxHeight) maxHeight = h;
+  }
+
+  // 2. 連鎖シミュレーション
+  const simGrid = cloneGrid(grid);
+  const { chains, cleared } = simulateChains(simGrid);
+
+  // 3. 穴ペナルティ（塞がれた空きマス）
+  let holes = 0;
+  for (let c = 0; c < BOT_COLS; c++) {
+    let foundPuyo = false;
+    for (let r = 0; r < BOT_ROWS; r++) {
+      if (grid[r][c]) foundPuyo = true;
+      else if (foundPuyo) holes++;
+    }
+  }
+
+  // 4. 隣接ボーナス（同色が隣り合っている）
+  let adjacency = 0;
+  for (let r = 0; r < BOT_ROWS; r++) {
+    for (let c = 0; c < BOT_COLS; c++) {
+      if (!grid[r][c] || grid[r][c] === 'gray') continue;
+      if (r+1 < BOT_ROWS && grid[r+1][c] === grid[r][c]) adjacency++;
+      if (c+1 < BOT_COLS && grid[r][c+1] === grid[r][c]) adjacency++;
+    }
+  }
+
+  // 難易度別のウェイト
+  let chainWeight, heightWeight, holeWeight, adjWeight;
+  if (difficulty === 'easy') {
+    chainWeight = 50; heightWeight = -3; holeWeight = -5; adjWeight = 5;
+  } else if (difficulty === 'hard') {
+    chainWeight = 300; heightWeight = -8; holeWeight = -20; adjWeight = 15;
+  } else { // normal
+    chainWeight = 150; heightWeight = -5; holeWeight = -12; adjWeight = 10;
+  }
+
+  return (
+    chains * chainWeight +
+    cleared * 20 +
+    heightPenalty * heightWeight +
+    holes * holeWeight +
+    adjacency * adjWeight
+  );
+}
+
+// ぷよペアを盤面に配置
+function placePairBot(grid, col, rotation, mainColor, subColor) {
+  // rotation: 0=sub上, 1=sub右, 2=sub下, 3=sub左
+  let mainRow = -1, subRow = -1, mainCol = col, subCol = col;
+
+  if (rotation === 0) { // sub上
+    // メインを先に落とす
+    for (let r = BOT_ROWS - 1; r >= 0; r--) {
+      if (!grid[r][col]) { mainRow = r; break; }
+    }
+    if (mainRow < 0) return false;
+    // サブはメインの上
+    subRow = mainRow - 1;
+    if (subRow < 0) return false; // はみ出す
+    // 既にある場合
+    if (grid[subRow][col]) {
+      // サブをmainRowに重ねることはできない → 再計算
+      // mainRowに2つ積む場合
+      subRow = mainRow - 1;
+    }
+  } else if (rotation === 1) { // sub右
+    subCol = col + 1;
+    if (subCol >= BOT_COLS) return false;
+    for (let r = BOT_ROWS - 1; r >= 0; r--) {
+      if (!grid[r][col]) { mainRow = r; break; }
+    }
+    for (let r = BOT_ROWS - 1; r >= 0; r--) {
+      if (!grid[r][subCol]) { subRow = r; break; }
+    }
+    if (mainRow < 0 || subRow < 0) return false;
+  } else if (rotation === 2) { // sub下（メインが上）
+    // subを先に落とす
+    for (let r = BOT_ROWS - 1; r >= 0; r--) {
+      if (!grid[r][col]) { subRow = r; break; }
+    }
+    if (subRow < 0) return false;
+    mainRow = subRow - 1;
+    if (mainRow < 0) return false;
+    if (grid[mainRow][col]) return false;
+  } else { // rotation === 3: sub左
+    subCol = col - 1;
+    if (subCol < 0) return false;
+    for (let r = BOT_ROWS - 1; r >= 0; r--) {
+      if (!grid[r][col]) { mainRow = r; break; }
+    }
+    for (let r = BOT_ROWS - 1; r >= 0; r--) {
+      if (!grid[r][subCol]) { subRow = r; break; }
+    }
+    if (mainRow < 0 || subRow < 0) return false;
+  }
+
+  grid[mainRow][mainCol] = mainColor;
+  if (subRow >= 0 && subRow < BOT_ROWS) grid[subRow][subCol] = subColor;
+  return true;
+}
+
+// Bot AI: 次の手を決定（NEXTまで考慮）
+function botDecideMove(botState, lookahead) {
+  const main1 = botState.currentPair.main;
+  const sub1 = botState.currentPair.sub;
+  const next1 = botState.nextQueue[0];
+  const next2 = botState.nextQueue[1];
+
+  let bestScore = -Infinity;
+  let bestMove = { col: 2, rotation: 0 };
+
+  const difficulty = botState.difficulty;
+
+  for (let col = 0; col < BOT_COLS; col++) {
+    for (let rot = 0; rot < 4; rot++) {
+      const g1 = cloneGrid(botState.grid);
+      if (!placePairBot(g1, col, rot, main1, sub1)) continue;
+      applyGravityBot(g1);
+
+      let score = evaluateGrid(g1, difficulty);
+
+      // NEXTを1手先読み（normalとhard）
+      if (lookahead >= 1 && next1) {
+        let bestNext = -Infinity;
+        for (let c2 = 0; c2 < BOT_COLS; c2++) {
+          for (let r2 = 0; r2 < 4; r2++) {
+            const g2 = cloneGrid(g1);
+            if (!placePairBot(g2, c2, r2, next1.main, next1.sub)) continue;
+            applyGravityBot(g2);
+            const s2 = evaluateGrid(g2, difficulty);
+            if (s2 > bestNext) bestNext = s2;
+          }
+        }
+        if (bestNext > -Infinity) score += bestNext * 0.5;
+      }
+
+      // NEXTを2手先読み（hardのみ）
+      if (lookahead >= 2 && next2) {
+        let bestNext2 = -Infinity;
+        for (let c3 = 0; c3 < BOT_COLS; c3++) {
+          for (let r3 = 0; r3 < 4; r3++) {
+            const g3 = cloneGrid(g1);
+            if (!placePairBot(g3, c3, r3, next2.main, next2.sub)) continue;
+            applyGravityBot(g3);
+            const s3 = evaluateGrid(g3, difficulty);
+            if (s3 > bestNext2) bestNext2 = s3;
+          }
+        }
+        if (bestNext2 > -Infinity) score += bestNext2 * 0.25;
+      }
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestMove = { col, rotation: rot };
+      }
+    }
+  }
+
+  return bestMove;
+}
+
+// Bot ゲームループ
+function botTick(room, botState) {
+  if (botState.gameOver || !room.gameStarted) return;
+
+  // おじゃまぷよキュー処理
+  if (botState.garbageQueue && botState.garbageQueue.length > 0) {
+    const now = Date.now();
+    const delayMs = ((room.settings && room.settings.garbageDelay) || 3) * 1000;
+    for (let i = botState.garbageQueue.length - 1; i >= 0; i--) {
+      if (now >= botState.garbageQueue[i].time) {
+        botState.pendingGarbage += botState.garbageQueue[i].amount;
+        botState.garbageQueue.splice(i, 1);
+      }
+    }
+  }
+
+  // おじゃまぷよ落下処理（garbageModeに応じてdrop/raiseを切り替え）
+  if (botState.pendingGarbage > 0) {
+    const drop = Math.min(botState.pendingGarbage, 30);
+    botState.pendingGarbage -= drop;
+    const garbageMode = (room.settings && room.settings.garbageMode) || 'drop';
+
+    if (garbageMode === 'raise') {
+      // テトリス風上昇：段数計算して下から押し上げ
+      let totalRows = Math.floor(drop / 2);
+      if (totalRows < 1) totalRows = 1;
+      const rowsToAdd = Math.min(totalRows, 4);
+
+      // ゲームオーバーチェック：最上段のぷよが押し出されるか
+      let gameOver = false;
+      for (let row = 0; row < rowsToAdd; row++) {
+        for (let col = 0; col < BOT_COLS; col++) {
+          if (botState.grid[row][col]) { gameOver = true; break; }
+        }
+        if (gameOver) break;
+      }
+      if (gameOver) { botGameOver(room, botState); return; }
+
+      // 既存ぷよを上にシフト
+      for (let row = 0; row < BOT_ROWS - rowsToAdd; row++) {
+        for (let col = 0; col < BOT_COLS; col++) {
+          botState.grid[row][col] = botState.grid[row + rowsToAdd][col];
+        }
+      }
+      // 下からgarbageを追加
+      for (let rowOffset = 0; rowOffset < rowsToAdd; rowOffset++) {
+        const targetRow = BOT_ROWS - 1 - rowOffset;
+        for (let col = 0; col < BOT_COLS; col++) {
+          botState.grid[targetRow][col] = 'gray';
+        }
+      }
+    } else {
+      // 通常drop: ランダムな列に落とす
+      for (let i = 0; i < drop; i++) {
+        const col = Math.floor(Math.random() * BOT_COLS);
+        for (let r = BOT_ROWS - 1; r >= 0; r--) {
+          if (!botState.grid[r][col]) {
+            botState.grid[r][col] = 'gray';
+            break;
+          }
+        }
+      }
+    }
+    // おじゃまぷよ落下後にボーダーラインチェック（中央上2マス）
+    let isDanger = false;
+    if (botState.grid[0][2] || botState.grid[0][3]) { isDanger = true; }
+    if (isDanger) {
+      // Botゲームオーバー
+      botGameOver(room, botState);
+      return;
+    }
+  }
+
+  // 新しいぷよを生成
+  if (!botState.currentPair) {
+    // キューを補充
+    while (botState.nextQueue.length < 3) {
+      botState.nextQueue.push(botCreatePair(botState));
+    }
+    botState.currentPair = botState.nextQueue.shift();
+
+    // スポーン位置チェック（中央上2マスにぷよがあればゲームオーバー）
+    if (botState.grid[0][2] || botState.grid[0][3]) {
+      botGameOver(room, botState);
+      return;
+    }
+  }
+
+  // 難易度に応じたlookahead
+  let lookahead = 0;
+  if (botState.difficulty === 'normal') lookahead = 1;
+  if (botState.difficulty === 'hard') lookahead = 2;
+
+  // 最善手を計算
+  const move = botDecideMove(botState, lookahead);
+
+  // ぷよを配置
+  const newGrid = cloneGrid(botState.grid);
+  const placed = placePairBot(newGrid, move.col, move.rotation,
+    botState.currentPair.main, botState.currentPair.sub);
+
+  if (!placed) {
+    // 配置失敗 → フォールバック（任意の列に縦に置く）
+    let fallbackPlaced = false;
+    for (let fc = 0; fc < BOT_COLS; fc++) {
+      if (placePairBot(newGrid, fc, 0, botState.currentPair.main, botState.currentPair.sub)) {
+        fallbackPlaced = true;
+        break;
+      }
+    }
+    if (!fallbackPlaced) {
+      botGameOver(room, botState);
+      return;
+    }
+  }
+
+  applyGravityBot(newGrid);
+
+  // 連鎖処理 & 攻撃計算（newGridに実際に消去を適用する）
+  let chainCount = 0;
+  let totalGarbageSent = 0;
+  let garbageSendPositions = [];
+
+  while (true) {
+    applyGravityBot(newGrid);
+    const visited = Array.from({length: BOT_ROWS}, () => Array(BOT_COLS).fill(false));
+    const toRemove = new Set();
+    let cleared = 0;
+
+    for (let r = 0; r < BOT_ROWS; r++) {
+      for (let c = 0; c < BOT_COLS; c++) {
+        if (newGrid[r][c] && newGrid[r][c] !== 'gray' && !visited[r][c]) {
+          const group = floodFillBot(newGrid, r, c, visited);
+          if (group.length >= 4) {
+            group.forEach(([gr,gc]) => { toRemove.add(`${gr},${gc}`); garbageSendPositions.push({row:gr,col:gc}); });
+            cleared += group.length;
+            group.forEach(([gr,gc]) => {
+              [[gr-1,gc],[gr+1,gc],[gr,gc-1],[gr,gc+1]].forEach(([nr,nc]) => {
+                if(nr>=0&&nr<BOT_ROWS&&nc>=0&&nc<BOT_COLS&&newGrid[nr][nc]==='gray') {
+                  toRemove.add(`${nr},${nc}`);
+                }
+              });
+            });
+          }
+        }
+      }
+    }
+    if (cleared === 0) break;
+    chainCount++;
+
+    // おじゃまぷよ計算
+    const actualMatch = cleared;
+    const baseGarbage = Math.floor((actualMatch / 2) * (room.settings.garbageRate || 1.0));
+    totalGarbageSent += baseGarbage;
+
+    // newGridに実際に消去を適用
+    toRemove.forEach(key => {
+      const [r,c] = key.split(',').map(Number);
+      newGrid[r][c] = null;
+    });
+  }
+
+  // 相殺後に攻撃
+  let remainingGarbage = totalGarbageSent;
+  if (botState.pendingGarbage > 0) {
+    const offset = Math.min(remainingGarbage, botState.pendingGarbage);
+    botState.pendingGarbage -= offset;
+    remainingGarbage -= offset;
+  }
+
+  if (remainingGarbage > 0 && room.alivePlayers.includes(botState.id)) {
+    // ランダムなターゲットに攻撃
+    const opponents = room.alivePlayers.filter(id => id !== botState.id);
+    if (opponents.length > 0) {
+      const targetId = opponents[Math.floor(Math.random() * opponents.length)];
+      // ターゲットがBotかプレイヤーか
+      const targetBotState = room.bots && room.bots.find(b => b.id === targetId);
+      if (targetBotState) {
+        // Bot → Bot 攻撃
+        const delayMs = ((room.settings && room.settings.garbageDelay) || 3) * 1000;
+        targetBotState.garbageQueue.push({ amount: remainingGarbage, time: Date.now() + delayMs });
+        botState.totalGarbageSent = (botState.totalGarbageSent || 0) + remainingGarbage;
+        targetBotState.totalGarbageReceived = (targetBotState.totalGarbageReceived || 0) + remainingGarbage;
+      } else {
+        // Bot → プレイヤー 攻撃
+        const targetPlayer = room.players.find(p => p.playerId === targetId);
+        const targetState = room.playerStates.get(targetId);
+        if (targetPlayer && targetState) {
+          const multiplier = targetState.garbageMultiplier || 1.0;
+          const finalAmount = Math.floor(remainingGarbage * multiplier);
+          botState.totalGarbageSent = (botState.totalGarbageSent || 0) + finalAmount;
+          targetState.totalGarbageReceived = (targetState.totalGarbageReceived || 0) + finalAmount;
+
+          const delayMs = ((room.settings && room.settings.garbageDelay) || 3) * 1000;
+          targetPlayer.send(JSON.stringify({
+            type: 'receive_garbage',
+            fromPlayerId: botState.id,
+            amount: finalAmount,
+            colors: Array(finalAmount).fill('gray'),
+            sourcePositions: garbageSendPositions.slice(0, finalAmount),
+          }));
+          ws_send_attack_ack(room, botState.id, targetId, finalAmount, garbageSendPositions);
+        }
+      }
+    }
+  }
+
+  botState.grid = newGrid;
+  botState.currentPair = null;
+
+  // Bot移動アニメーション：次のぷよの移動を段階的に送信
+  if (!botState.nextQueue) botState.nextQueue = [];
+  while (botState.nextQueue.length < 3) {
+    botState.nextQueue.push(botCreatePair(botState));
+  }
+  const nextPairPreview = botState.nextQueue[0];
+  if (nextPairPreview) {
+    const previewMove = botDecideMove({ ...botState, currentPair: nextPairPreview }, botState.difficulty === 'hard' ? 1 : 0);
+    const targetCol = previewMove.col;
+    const targetRot = previewMove.rotation;
+    const colors = { main: nextPairPreview.main, sub: nextPairPreview.sub };
+    const startCol = 2; // スポーン列
+    const thinkDelay = botState.botSpeed || 1200;
+    const stepDelay = Math.max(50, Math.floor(thinkDelay / 12)); // 移動ステップ間隔
+
+    // 段階的に移動アニメーションを送信
+    const steps = [];
+    let curCol = startCol;
+    let curRot = 0;
+
+    // まず回転ステップを追加
+    if (targetRot !== curRot) {
+      steps.push({ col: curCol, row: 0, rotation: targetRot });
+      curRot = targetRot;
+    }
+
+    // 次に左右移動ステップ
+    const dir = targetCol > curCol ? 1 : -1;
+    while (curCol !== targetCol) {
+      curCol += dir;
+      steps.push({ col: curCol, row: 0, rotation: curRot });
+    }
+
+    // 各ステップを遅延送信
+    steps.forEach((step, i) => {
+      setTimeout(() => {
+        if (!botState.gameOver && room.gameStarted) {
+          room.players.forEach(p => {
+            try {
+              p.send(JSON.stringify({
+                type: 'piece_update',
+                playerId: botState.id,
+                data: { ...step, colors }
+              }));
+            } catch(e) {}
+          });
+        }
+      }, stepDelay * i);
+    });
+
+    // 最終位置（ハードドロップ後）
+    setTimeout(() => {
+      if (!botState.gameOver && room.gameStarted) {
+        room.players.forEach(p => {
+          try {
+            p.send(JSON.stringify({
+              type: 'piece_update',
+              playerId: botState.id,
+              data: { col: targetCol, row: 0, rotation: targetRot, colors }
+            }));
+          } catch(e) {}
+        });
+      }
+    }, stepDelay * steps.length);
+  }
+
+  // フィールド更新をプレイヤーに送信
+  broadcastBotFieldUpdate(room, botState);
+
+  // ゲームオーバーチェック（中央上2マス col=2,3 にぷよがあるか）
+  let isDanger = false;
+  if (botState.grid[0][2] || botState.grid[0][3]) { isDanger = true; }
+  if (isDanger) {
+    botGameOver(room, botState);
+  }
+}
+
+function ws_send_attack_ack(room, fromId, toId, amount, positions) {
+  // 全員に third_party_attack を送る（観戦者向け）
+  room.players.forEach(p => {
+    p.send(JSON.stringify({
+      type: 'third_party_attack',
+      fromPlayerId: fromId,
+      toPlayerId: toId,
+      amount: amount,
+      sourcePositions: positions.slice(0, amount),
+    }));
+  });
+}
+
+function broadcastBotFieldUpdate(room, botState) {
+  const gridData = botState.grid.map(row => row.map(c => c || null));
+  let totalGarbage = botState.pendingGarbage;
+  if (botState.garbageQueue) totalGarbage += botState.garbageQueue.reduce((s,i) => s+i.amount, 0);
+
+  room.players.forEach(p => {
+    p.send(JSON.stringify({
+      type: 'opponent_update',
+      playerId: botState.id,
+      data: gridData,
+      garbageCount: totalGarbage,
+    }));
+  });
+}
+
+function botGameOver(room, botState) {
+  if (botState.gameOver) return;
+  botState.gameOver = true;
+  if (botState.dropTimer) { clearInterval(botState.dropTimer); botState.dropTimer = null; }
+
+  room.alivePlayers = room.alivePlayers.filter(id => id !== botState.id);
+  room.players.forEach(p => {
+    p.send(JSON.stringify({ type: 'player_defeated', playerId: botState.id }));
+  });
+
+  checkGameEnd(room);
+}
+
+function startBotsInRoom(room, seed) {
+  if (!room.bots || room.bots.length === 0) return;
+
+  room.bots.forEach(botState => {
+    // 古いタイマーがあれば確実に停止
+    if (botState.dropTimer) {
+      clearInterval(botState.dropTimer);
+      botState.dropTimer = null;
+    }
+
+    botState.grid = Array.from({length: BOT_ROWS}, () => Array(BOT_COLS).fill(null));    botState.gameOver = false;
+    botState.pendingGarbage = 0;
+    botState.garbageQueue = [];
+    botState.currentPair = null;
+    botState.score = 0;
+    botState.totalGarbageSent = 0;
+    botState.totalGarbageReceived = 0;
+    initBotRng(botState, seed + botState.id.charCodeAt(4));
+    // Nextキュー初期化
+    botState.nextQueue = [];
+    while (botState.nextQueue.length < 3) {
+      botState.nextQueue.push(botCreatePair(botState));
+    }
+
+    // Bot思考間隔: difficulty を速度(ms)として直接使う
+    // easy=2000ms, normal=1200ms, hard=600ms, veryhard=300ms
+    let thinkDelay;
+    if (botState.difficulty === 'easy') thinkDelay = 2500;
+    else if (botState.difficulty === 'hard') thinkDelay = 600;
+    else if (botState.difficulty === 'veryhard') thinkDelay = 250;
+    else thinkDelay = 1200; // normal
+    // ユーザー指定のspeedがあればそちらを使う
+    if (botState.botSpeed && botState.botSpeed > 0) thinkDelay = botState.botSpeed;
+
+    // 少し遅れてスタート
+    const startDelay = 3500; // カウントダウン分待つ
+    setTimeout(() => {
+      if (!botState.gameOver && room.gameStarted) {
+        botState.dropTimer = setInterval(() => {
+          botTick(room, botState);
+        }, thinkDelay);
+      }
+    }, startDelay);
+  });
+}
+
+// ホストがBotを追加するハンドラ
+function handleAddBot(ws, data) {
+  if (!ws.roomCode || !ws.isHost) return;
+  const room = rooms.get(ws.roomCode);
+  if (!room || room.gameStarted) return;
+
+  if (!room.bots) room.bots = [];
+  if (room.bots.length >= 6) {
+    ws.send(JSON.stringify({ type: 'error', message: 'Botは最大6体まで追加できます' }));
+    return;
+  }
+
+  const difficulty = data.difficulty || 'normal';
+  const diffLabel = difficulty === 'easy' ? 'イージー' : difficulty === 'hard' ? 'ハード' : difficulty === 'veryhard' ? '超ハード' : 'ノーマル';
+  const botName = data.name || `CPU(${diffLabel})`;
+  const botState = createBotState(botName, difficulty);
+  // botSpeedが指定されていれば設定（ms単位）
+  if (data.botSpeed && data.botSpeed > 0) {
+    botState.botSpeed = data.botSpeed;
+  }
+
+  room.bots.push(botState);
+  room.playerStates.set(botState.id, {
+    id: botState.id,
+    name: botState.name,
+    ready: true,
+    alive: true,
+    isBot: true,
+    isSpectator: false,
+    score: 0,
+    garbageMultiplier: 1.0,
+    totalGarbageSent: 0,
+    totalGarbageReceived: 0,
+  });
+
+  broadcastRoomState(room);
+}
+
+function handleRemoveBot(ws, data) {
+  if (!ws.roomCode || !ws.isHost) return;
+  const room = rooms.get(ws.roomCode);
+  if (!room || room.gameStarted) return;
+  if (!room.bots) return;
+
+  const botId = data.botId;
+  room.bots = room.bots.filter(b => b.id !== botId);
+  room.playerStates.delete(botId);
+
+  broadcastRoomState(room);
 }
 
 const PORT = process.env.PORT || 3000;

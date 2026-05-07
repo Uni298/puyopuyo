@@ -60,7 +60,7 @@ function startBot(token, serverData) {
             return;
         }
 
-        if (command === '!top') {
+        if (command === '!topp') {
             await sendTopScores(message.channel);
             return;
         }
